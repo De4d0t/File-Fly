@@ -34,7 +34,11 @@ function dispatchEvent(type, payload, targetIds = null) {
 
   for (const [ws, clientMeta] of socketClientMap.entries()) {
     if (ws.readyState === WebSocket.OPEN) {
-      if (targetIds === null || targetIds.includes(clientMeta.id)) {
+      if (
+        targetIds === null || 
+        targetIds.includes(clientMeta.id) ||
+        (clientMeta.isLocalHost && (targetIds.includes(config.id) || targetIds.includes('host')))
+      ) {
         ws.send(message);
       }
     }

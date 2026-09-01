@@ -95,8 +95,12 @@ export class TransferEngine {
 
     this.activeTransfers.set(transferId, transfer);
 
-    // CRITICAL: Notify ONLY the recipient! (Never notify the sender)
-    this.notifyUI('TRANSFER_REQUEST', transfer, [recipient.id]);
+    // Dispatch notification to recipient client or host
+    const targetIds = (recipient.id === this.config.id || !recipient.id) 
+      ? [this.config.id, 'host'] 
+      : [recipient.id, this.config.id, 'host'];
+
+    this.notifyUI('TRANSFER_REQUEST', transfer, targetIds);
 
     return transfer;
   }

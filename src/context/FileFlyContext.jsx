@@ -198,24 +198,25 @@ export function FileFlyProvider({ children }) {
     // When someone wants to send files to this device
     const unsubRequest = socketService.on('TRANSFER_REQUEST', (transfer) => {
       setMyDevice((currentMyDevice) => {
-        // STRICT SAFETY CHECK: If I am the sender, DO NOT show incoming prompt
-        if (transfer.sender?.id === currentMyDevice.id) {
+        // STRICT SAFETY CHECK: If I am the sender, DO NOT show incoming prompt to myself
+        if (transfer.sender?.id && currentMyDevice.id && transfer.sender.id === currentMyDevice.id) {
           return currentMyDevice;
         }
 
-        // If I am not the intended recipient, ignore
-        if (transfer.recipient?.id && transfer.recipient.id !== currentMyDevice.id) {
-          return currentMyDevice;
-        }
+        // Automatically dismiss any open modal so transfer request is immediately unobstructed
+        setIsQrModalOpen(false);
+        setIsHistoryModalOpen(false);
+        setIsRenameModalOpen(false);
 
+        // Set pending request to display TransferModal immediately
         setPendingIncomingRequest(transfer);
         playTransferRequestSound();
 
         // Show native desktop notification if available
         if (window.fileflyDesktop?.showNotification) {
           window.fileflyDesktop.showNotification(
-            'طلب نقل ملف جديد - FileFly',
-            `الجهاز ${transfer.sender.name} يرغب في إرسال ${transfer.files.length} ملف.`
+            'طلب استلام ملف جديد - FileFly',
+            `الجهاز ${transfer.sender?.name || 'مجهول'} يرغب في إرسال ${transfer.files?.length || 1} ملف.`
           );
         }
 
