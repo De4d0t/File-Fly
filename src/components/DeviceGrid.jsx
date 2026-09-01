@@ -15,6 +15,21 @@ import DeviceCard from './DeviceCard.jsx';
 export default function DeviceGrid() {
   const { peers, myDevice, isScanning, setIsQrModalOpen } = useFileFly();
 
+  // Strict multi-layer filter: Guarantee that self device NEVER shows in the grid
+  const filteredPeers = (peers || []).filter((peer) => {
+    if (!peer || !peer.id) return false;
+    // Don't show by current active device ID
+    if (myDevice?.id && peer.id === myDevice.id) return false;
+    // Don't show by stored localStorage client ID
+    const savedClientId = typeof window !== 'undefined' ? localStorage.getItem('filefly_client_id') : null;
+    if (savedClientId && peer.id === savedClientId) return false;
+    // If this screen is the Host, don't show the host card
+    if (myDevice?.isHost && peer.isHost) return false;
+    // Don't show if matching name and IP
+    if (myDevice?.name && peer.name === myDevice.name && peer.ip === myDevice.ip) return false;
+    return true;
+  });
+
   return (
     <div className="w-full">
       {/* Active LAN Scanning Alert Banner */}
@@ -38,7 +53,7 @@ export default function DeviceGrid() {
             <h2 className="text-lg font-bold text-white flex items-center gap-2">
               الأجهزة المكتشفة على الشبكة
               <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 font-mono">
-                {peers.length}
+                {filteredPeers.length}
               </span>
             </h2>
             <p className="text-xs text-slate-400">
@@ -58,9 +73,9 @@ export default function DeviceGrid() {
       </div>
 
       {/* Grid or Empty State */}
-      {peers.length > 0 ? (
+      {filteredPeers.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {peers.map((peer) => (
+          {filteredPeers.map((peer) => (
             <DeviceCard key={peer.id} peer={peer} />
           ))}
         </div>

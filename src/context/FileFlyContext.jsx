@@ -134,7 +134,17 @@ export function FileFlyProvider({ children }) {
 
     const unsubPeers = socketService.on('PEERS_UPDATE', (peersList) => {
       setMyDevice((currentMyDevice) => {
-        const filtered = (peersList || []).filter((p) => p.id !== currentMyDevice.id);
+        const savedClientId = typeof window !== 'undefined' ? localStorage.getItem('filefly_client_id') : null;
+        const host = hostDeviceRef.current;
+
+        const filtered = (peersList || []).filter((p) => {
+          if (!p || !p.id) return false;
+          if (p.id === currentMyDevice.id) return false;
+          if (savedClientId && p.id === savedClientId) return false;
+          if (currentMyDevice.isHost && (p.isHost || (host && p.id === host.id))) return false;
+          return true;
+        });
+
         setPeers(filtered);
         return currentMyDevice;
       });
