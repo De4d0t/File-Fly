@@ -239,9 +239,33 @@ server.listen(PORT, '0.0.0.0', () => {
   discovery.start();
 });
 
-// Graceful shutdown
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`\n⚠️ المنفذ ${PORT} مستخدم بالفعل حالياً بواسطة نسخة أخرى من السيرفر.`);
+  } else {
+    console.error('[Server Error]:', err);
+  }
+});
+
+// Prevent server from crashing on background network errors
+process.on('uncaughtException', (err) => {
+  console.error('[FileFly Warning] Uncaught exception (server kept alive):', err?.message || err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[FileFly Warning] Unhandled rejection (server kept alive):', reason);
+});
+
+// Graceful shutdown only when explicitly terminated (Ctrl+C)
 process.on('SIGINT', () => {
   console.log('\n[FileFly Server] Shutting down...');
+  discovery.stop();
+  server.close(() => {
+    process.exit(0);
+  });
+});
+
+process.on('SIGTERM', () => {
   discovery.stop();
   server.close(() => {
     process.exit(0);
