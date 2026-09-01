@@ -3,8 +3,7 @@ import {
   Laptop, 
   Smartphone, 
   Monitor, 
-  Send, 
-  FolderUp, 
+  UploadCloud, 
   FileUp, 
   Radio, 
   CheckCircle2,
@@ -16,7 +15,6 @@ export default function DeviceCard({ peer }) {
   const { sendFilesToDevice } = useFileFly();
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef(null);
-  const folderInputRef = useRef(null);
 
   // Determine icon and OS badge
   const getDeviceDetails = (os) => {
@@ -96,7 +94,7 @@ export default function DeviceCard({ peer }) {
           : 'glass-card hover:border-sky-500/40 hover:shadow-xl hover:shadow-sky-500/10'
       }`}
     >
-      {/* Hidden File and Folder Inputs */}
+      {/* Hidden File Input */}
       <input
         type="file"
         multiple
@@ -104,30 +102,21 @@ export default function DeviceCard({ peer }) {
         onChange={handleFileSelect}
         className="hidden"
       />
-      <input
-        type="file"
-        multiple
-        webkitdirectory="true"
-        directory="true"
-        ref={folderInputRef}
-        onChange={handleFileSelect}
-        className="hidden"
-      />
 
       {/* Drag Over Overlay Alert */}
       {isDragOver && (
-        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-slate-950/85 backdrop-blur-md rounded-3xl border-2 border-dashed border-brand-400 text-brand-400 animate-pulse">
-          <Sparkles className="w-10 h-10 mb-2 animate-bounce" />
-          <p className="text-sm font-bold">أفلت الملفات هنا للإرسال فوراً إلى</p>
-          <p className="text-xs font-semibold text-white mt-1">{peer.name}</p>
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-slate-950/90 backdrop-blur-md rounded-3xl border-2 border-dashed border-emerald-400 text-emerald-400 animate-in fade-in zoom-in-95 duration-150">
+          <UploadCloud className="w-12 h-12 mb-2 animate-bounce text-emerald-400" />
+          <p className="text-sm font-bold text-white">أفلت الملفات هنا للإرسال فوراً إلى</p>
+          <p className="text-xs font-semibold text-emerald-400 mt-1">{peer.name}</p>
         </div>
       )}
 
       {/* Card Header & Avatar */}
       <div className="flex items-start justify-between gap-3 mb-4">
         <div className="flex items-center gap-3">
-          <div className={`w-13 h-13 rounded-2xl ${iconBg} p-3 flex items-center justify-center text-white shadow-lg`}>
-            <DeviceIcon className="w-7 h-7" />
+          <div className={`w-12 h-12 rounded-2xl ${iconBg} p-2.5 flex items-center justify-center text-white shadow-lg`}>
+            <DeviceIcon className="w-6 h-6" />
           </div>
 
           <div>
@@ -152,31 +141,27 @@ export default function DeviceCard({ peer }) {
         </div>
       </div>
 
-      {/* Drag Hint Subtext */}
-      <div className="py-2 px-3 rounded-xl bg-slate-900/60 border border-slate-800/60 text-[11px] text-slate-400 text-center mb-4">
-        اسحب وأفلت الملفات مباشرة على هذا الكرت للإرسال
-      </div>
+      {/* Interactive Drop & Click Upload Zone */}
+      <button
+        type="button"
+        onClick={() => fileInputRef.current?.click()}
+        className="w-full relative group/drop overflow-hidden rounded-2xl p-4 border border-dashed border-slate-700/80 hover:border-emerald-400/80 bg-slate-900/40 hover:bg-emerald-500/10 transition-all duration-300 flex flex-col items-center justify-center gap-2 cursor-pointer active:scale-95 shadow-inner"
+        title="انقر لاختيار ملفات أو اسحب وأفلت الملفات هنا"
+      >
+        <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 group-hover/drop:bg-emerald-500/25 group-hover/drop:border-emerald-500/40 group-hover/drop:scale-110 group-hover/drop:shadow-lg group-hover/drop:shadow-emerald-500/25 flex items-center justify-center transition-all duration-300">
+          <UploadCloud className="w-5 h-5 group-hover/drop:-translate-y-0.5 transition-transform" />
+        </div>
 
-      {/* Action Buttons */}
-      <div className="grid grid-cols-2 gap-2">
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold shadow-md shadow-brand-600/20 transition-all active:scale-95"
-        >
-          <FileUp className="w-4 h-4" />
-          <span>إرسال ملفات</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => folderInputRef.current?.click()}
-          className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all active:scale-95"
-        >
-          <FolderUp className="w-4 h-4 text-amber-400" />
-          <span>إرسال مجلد</span>
-        </button>
-      </div>
+        <div className="text-center">
+          <p className="text-xs font-bold text-slate-200 group-hover/drop:text-emerald-300 transition-colors">
+            اسحب الملفات هنا أو انقر للاختيار
+          </p>
+          <p className="text-[10px] text-slate-500 group-hover/drop:text-slate-300 mt-0.5 transition-colors">
+            نقل فوري وسريع عبر الشبكة
+          </p>
+        </div>
+      </button>
     </div>
   );
 }
+
