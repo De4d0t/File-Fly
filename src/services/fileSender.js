@@ -38,13 +38,18 @@ export async function requestTransferToPeer(peer, files, myDevice) {
 
   let response;
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 1500);
+
     response = await fetch(`${targetBaseUrl}/api/transfer/request`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+      signal: controller.signal,
     });
+    clearTimeout(timeoutId);
   } catch (err) {
-    // If remote connection failed, fallback to local server
+    // If remote connection timed out or failed, fallback to local server immediately
     if (targetBaseUrl !== localBaseUrl) {
       targetBaseUrl = localBaseUrl;
       response = await fetch(`${targetBaseUrl}/api/transfer/request`, {

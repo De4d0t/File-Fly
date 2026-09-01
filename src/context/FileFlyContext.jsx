@@ -197,31 +197,29 @@ export function FileFlyProvider({ children }) {
 
     // When someone wants to send files to this device
     const unsubRequest = socketService.on('TRANSFER_REQUEST', (transfer) => {
-      setMyDevice((currentMyDevice) => {
-        // STRICT SAFETY CHECK: If I am the sender, DO NOT show incoming prompt to myself
-        if (transfer.sender?.id && currentMyDevice.id && transfer.sender.id === currentMyDevice.id) {
-          return currentMyDevice;
-        }
+      const currentId = myDeviceRef.current?.id;
 
-        // Automatically dismiss any open modal so transfer request is immediately unobstructed
-        setIsQrModalOpen(false);
-        setIsHistoryModalOpen(false);
-        setIsRenameModalOpen(false);
+      // STRICT SAFETY CHECK: If I am the sender, DO NOT show incoming prompt to myself
+      if (transfer.sender?.id && currentId && transfer.sender.id === currentId) {
+        return;
+      }
 
-        // Set pending request to display TransferModal immediately
-        setPendingIncomingRequest(transfer);
-        playTransferRequestSound();
+      // Automatically dismiss any open modal so transfer request is immediately unobstructed
+      setIsQrModalOpen(false);
+      setIsHistoryModalOpen(false);
+      setIsRenameModalOpen(false);
 
-        // Show native desktop notification if available
-        if (window.fileflyDesktop?.showNotification) {
-          window.fileflyDesktop.showNotification(
-            'طلب استلام ملف جديد - FileFly',
-            `الجهاز ${transfer.sender?.name || 'مجهول'} يرغب في إرسال ${transfer.files?.length || 1} ملف.`
-          );
-        }
+      // Set pending request to display TransferModal immediately
+      setPendingIncomingRequest(transfer);
+      playTransferRequestSound();
 
-        return currentMyDevice;
-      });
+      // Show native desktop notification if available
+      if (window.fileflyDesktop?.showNotification) {
+        window.fileflyDesktop.showNotification(
+          'طلب استلام ملف جديد - FileFly',
+          `الجهاز ${transfer.sender?.name || 'مجهول'} يرغب في إرسال ${transfer.files?.length || 1} ملف.`
+        );
+      }
     });
 
     // Live progress for incoming files
