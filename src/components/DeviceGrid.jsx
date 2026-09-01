@@ -52,17 +52,6 @@ export default function DeviceGrid() {
               <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 font-mono font-bold">
                 {filteredPeers.length}
               </span>
-
-              {/* Live Radar Active Badge */}
-              {isScanning && (
-                <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-sky-500/15 border border-sky-400/30 text-sky-300 text-[11px] font-medium shadow-sm animate-pulse">
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-500"></span>
-                  </span>
-                  <span>رادار الفحص نشط...</span>
-                </div>
-              )}
             </div>
 
             <p className="text-xs text-slate-400 mt-0.5">
