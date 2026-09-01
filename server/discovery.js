@@ -94,6 +94,27 @@ export class PeerDiscovery {
     }
   }
 
+  setRadarActive(active) {
+    this.isRadarEnabled = Boolean(active);
+    if (!this.isRadarEnabled) {
+      if (this.subnetScanTimer) {
+        clearInterval(this.subnetScanTimer);
+        this.subnetScanTimer = null;
+      }
+      if (this.scanner) {
+        this.scanner.isScanning = false;
+        this.scanner.onStatusChange({ scanning: false });
+      }
+    } else {
+      if (!this.subnetScanTimer) {
+        this.subnetScanTimer = setInterval(() => {
+          this.scanner.scanSubnet();
+        }, SUBNET_SCAN_INTERVAL_MS);
+      }
+      this.scanner.scanSubnet();
+    }
+  }
+
   handleIncomingMessage(msgBuffer, rinfo) {
     try {
       const data = JSON.parse(msgBuffer.toString('utf8'));

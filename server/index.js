@@ -198,6 +198,10 @@ wss.on('connection', (ws, req) => {
           discovery.setName(newName);
           dispatchEvent('PEERS_UPDATE', discovery.getPeersList(), null);
         }
+      } else if (type === 'SET_RADAR') {
+        const active = Boolean(payload.active);
+        discovery.setRadarActive(active);
+        dispatchEvent('RADAR_STATUS', { active }, null);
       } else if (type === 'REFRESH_PEERS' || type === 'SCAN_SUBNET') {
         discovery.announce('ANNOUNCE');
         if (discovery.scanner) {

@@ -13,7 +13,7 @@ import { useFileFly } from '../context/FileFlyContext.jsx';
 import DeviceCard from './DeviceCard.jsx';
 
 export default function DeviceGrid() {
-  const { peers, myDevice, isScanning, refreshPeers, setIsQrModalOpen } = useFileFly();
+  const { peers, myDevice, isRadarActive, toggleRadar, setIsQrModalOpen } = useFileFly();
 
   // Strict multi-layer filter: Guarantee that self device NEVER shows in the grid
   const filteredPeers = (peers || []).filter((peer) => {
@@ -35,21 +35,20 @@ export default function DeviceGrid() {
       {/* Section Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          {/* Clickable Animated Radar Icon Box */}
+          {/* Clickable Animated Radar Icon Box (ON / OFF) */}
           <button
-            onClick={refreshPeers}
-            disabled={isScanning}
+            onClick={toggleRadar}
             className={`relative w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer hover:scale-110 active:scale-95 shadow-sm ${
-              isScanning 
+              isRadarActive 
                 ? 'bg-sky-500/25 border border-sky-400/60 shadow-lg shadow-sky-500/30 ring-2 ring-sky-400/40 glow-cyan' 
-                : 'bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/20 hover:border-sky-500/40 text-sky-400'
+                : 'bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-400'
             }`}
-            title={isScanning ? 'الرادار نشط: جاري فحص الشبكة...' : 'انقر لتشغيل رادار فحص الأجهزة'}
+            title={isRadarActive ? 'الرادار يعمل (انقر للإيقاف)' : 'الرادار متوقف (انقر للتشغيل)'}
           >
-            {isScanning && (
+            {isRadarActive && (
               <span className="absolute -inset-1 rounded-2xl bg-sky-400/20 animate-ping pointer-events-none"></span>
             )}
-            <Radio className={`w-4 h-4 text-sky-400 ${isScanning ? 'animate-spin drop-shadow-[0_0_8px_rgba(56,189,248,0.8)]' : 'animate-pulse'}`} />
+            <Radio className={`w-4 h-4 text-sky-400 ${isRadarActive ? 'animate-spin drop-shadow-[0_0_8px_rgba(56,189,248,0.8)]' : 'opacity-40'}`} />
           </button>
 
           <div>

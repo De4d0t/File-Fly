@@ -21,6 +21,8 @@ export default function Header() {
     myDevice, 
     isOnline, 
     isScanning,
+    isRadarActive,
+    toggleRadar,
     toggleVisibility,
     setIsQrModalOpen, 
     setIsHistoryModalOpen, 
@@ -136,24 +138,23 @@ export default function Header() {
             )}
           </button>
 
-          {/* Radar / Scan Button with rich spinning & glowing effects */}
+          {/* Radar Toggle Button (ON / OFF) */}
           <button
-            onClick={refreshPeers}
-            disabled={isScanning}
+            onClick={toggleRadar}
             className={`p-2.5 rounded-xl border transition-all flex items-center justify-center relative hover:scale-105 active:scale-95 shadow-sm ${
-              isScanning
+              isRadarActive
                 ? 'bg-sky-500/25 border-sky-400/60 text-sky-300 shadow-lg shadow-sky-500/30 ring-2 ring-sky-400/40 glow-cyan'
-                : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border-slate-700/80 hover:border-sky-500/30'
+                : 'bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-slate-200 border-slate-700/80'
             }`}
-            title={isScanning ? 'الرادار نشط: جاري فحص الشبكة...' : 'تشغيل رادار فحص الأجهزة على الشبكة'}
+            title={isRadarActive ? 'الرادار يعمل (انقر لإيقاف الرادار)' : 'الرادار متوقف (انقر لتشغيل الرادار)'}
           >
-            {isScanning && (
+            {isRadarActive && (
               <span className="absolute top-1 right-1 flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-80"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-400"></span>
               </span>
             )}
-            <Radio className={`w-4 h-4 text-sky-400 ${isScanning ? 'animate-spin drop-shadow-[0_0_8px_rgba(56,189,248,0.8)]' : ''}`} />
+            <Radio className={`w-4 h-4 text-sky-400 ${isRadarActive ? 'animate-spin drop-shadow-[0_0_8px_rgba(56,189,248,0.8)]' : 'opacity-40'}`} />
           </button>
 
           {/* QR Code Quick Connect for Mobile */}

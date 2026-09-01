@@ -63,6 +63,13 @@ export function FileFlyProvider({ children }) {
   const [peers, setPeers] = useState([]);
   const [history, setHistory] = useState([]);
   const [isScanning, setIsScanning] = useState(false);
+  const [isRadarActive, setIsRadarActive] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('filefly_radar_active');
+      return saved !== null ? saved === 'true' : true;
+    }
+    return true;
+  });
   const [pendingIncomingRequest, setPendingIncomingRequest] = useState(null);
   
   // Active transfer state for progress bars
@@ -173,6 +180,15 @@ export function FileFlyProvider({ children }) {
       setIsScanning(scanning);
     });
 
+    const unsubRadarStatus = socketService.on('RADAR_STATUS', (status) => {
+      if (typeof status?.active === 'boolean') {
+        setIsRadarActive(status.active);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('filefly_radar_active', String(status.active));
+        }
+      }
+    });
+
     const unsubDevice = socketService.on('DEVICE_UPDATE', (updated) => {
       if (isHostMachine) {
         setMyDevice((prev) => ({ ...prev, ...updated }));
@@ -248,6 +264,7 @@ export function FileFlyProvider({ children }) {
       unsubInitEvent();
       unsubPeers();
       unsubScanStatus();
+      unsubRadarStatus();
       unsubDevice();
       unsubRequest();
       unsubProgress();
@@ -295,13 +312,21 @@ export function FileFlyProvider({ children }) {
     }
   };
 
-  // Refresh discovered peers list with smooth auto-turn-off feedback
+  // Toggle Radar Scanner (تشغيل / إيقاف الرادار المستمر)
+  const toggleRadar = () => {
+    setIsRadarActive((prev) => {
+      const next = !prev;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('filefly_radar_active', String(next));
+      }
+      socketService.send('SET_RADAR', { active: next });
+      return next;
+    });
+  };
+
+  // Refresh discovered peers list
   const refreshPeers = () => {
-    setIsScanning(true);
-    socketService.send('REFRESH_PEERS', {});
-    setTimeout(() => {
-      setIsScanning(false);
-    }, 2500);
+    toggleRadar();
   };
 
   // Accept or decline incoming transfer
@@ -323,7 +348,11 @@ export function FileFlyProvider({ children }) {
         status: 'transferring',
       });
     } else {
-      playDeclinedSound();
+      socketService.send('TRANSFER_DECISION', {
+        transferId: transferId,
+        decision: 'decline',
+      });
+      setPendingIncomingRequest(null);
     }
 
     setPendingIncomingRequest(null);
@@ -481,6 +510,8 @@ export function FileFlyProvider({ children }) {
         peers,
         history,
         isScanning,
+        isRadarActive,
+        toggleRadar,
         activeTransfer,
         pendingIncomingRequest,
         isQrModalOpen,
