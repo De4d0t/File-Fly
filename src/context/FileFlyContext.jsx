@@ -121,15 +121,9 @@ export function FileFlyProvider({ children }) {
     const unsubInitEvent = socketService.on('INIT_STATE', unsubInit);
 
     const unsubPeers = socketService.on('PEERS_UPDATE', (peersList) => {
-      const host = hostDeviceRef.current;
       setMyDevice((currentMyDevice) => {
-        if (isHostMachine) {
-          setPeers(peersList.filter((p) => p.id !== currentMyDevice.id));
-        } else {
-          // Client on Laptop 2: Show Host + other peers
-          const others = peersList.filter((p) => p.id !== currentMyDevice.id && (!host || p.id !== host.id));
-          setPeers(host ? [host, ...others] : others);
-        }
+        const filtered = (peersList || []).filter((p) => p.id !== currentMyDevice.id);
+        setPeers(filtered);
         return currentMyDevice;
       });
     });
@@ -205,22 +199,24 @@ export function FileFlyProvider({ children }) {
       unsubCompleted();
       unsubCancelled();
     };
-  }, []);
+  }, [isHostMachine]);
 
   // Toggle Visibility (مكشوف / مخفي)
   const toggleVisibility = async () => {
     const nextState = !myDevice.visible;
     setMyDevice((prev) => ({ ...prev, visible: nextState }));
 
-    socketService.send('SET_VISIBILITY', { visible: nextState });
+    socketService.send('SET_VISIBILITY', { id: myDevice.id, visible: nextState });
 
-    try {
-      await fetch('/api/visibility', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ visible: nextState }),
-      });
-    } catch (e) {}
+    if (isHostMachine) {
+      try {
+        await fetch('/api/visibility', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ visible: nextState }),
+        });
+      } catch (e) {}
+    }
   };
 
   // Update device name
@@ -230,15 +226,17 @@ export function FileFlyProvider({ children }) {
     setMyDevice((prev) => ({ ...prev, name }));
     localStorage.setItem('filefly_device_name', name);
 
-    socketService.send('SET_NAME', { name });
+    socketService.send('SET_NAME', { id: myDevice.id, name });
 
-    try {
-      await fetch('/api/device-name', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name }),
-      });
-    } catch (e) {}
+    if (isHostMachine) {
+      try {
+        await fetch('/api/device-name', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name }),
+        });
+      } catch (e) {}
+    }
   };
 
   // Refresh discovered peers list

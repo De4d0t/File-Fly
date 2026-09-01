@@ -117,19 +117,25 @@ wss.on('connection', (ws, req) => {
           broadcastToClients('PEERS_UPDATE', discovery.getPeersList());
         }
       } else if (type === 'SET_VISIBILITY') {
-        discovery.setVisibility(payload.visible);
-        broadcastToClients('DEVICE_UPDATE', {
-          id: config.id,
-          name: config.name,
-          visible: config.visible,
-        });
+        const targetId = payload.id || currentClientId;
+        if (targetId && targetId !== config.id && discovery.peers.has(targetId)) {
+          const peer = discovery.peers.get(targetId);
+          peer.visible = Boolean(payload.visible);
+          broadcastToClients('PEERS_UPDATE', discovery.getPeersList());
+        } else {
+          discovery.setVisibility(payload.visible);
+          broadcastToClients('PEERS_UPDATE', discovery.getPeersList());
+        }
       } else if (type === 'SET_NAME') {
-        discovery.setName(payload.name);
-        broadcastToClients('DEVICE_UPDATE', {
-          id: config.id,
-          name: config.name,
-          visible: config.visible,
-        });
+        const targetId = payload.id || currentClientId;
+        if (targetId && targetId !== config.id && discovery.peers.has(targetId)) {
+          const peer = discovery.peers.get(targetId);
+          peer.name = payload.name;
+          broadcastToClients('PEERS_UPDATE', discovery.getPeersList());
+        } else {
+          discovery.setName(payload.name);
+          broadcastToClients('PEERS_UPDATE', discovery.getPeersList());
+        }
       } else if (type === 'REFRESH_PEERS' || type === 'SCAN_SUBNET') {
         discovery.announce('ANNOUNCE');
         if (discovery.scanner) {

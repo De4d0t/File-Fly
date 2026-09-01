@@ -222,14 +222,31 @@ export class PeerDiscovery {
   }
 
   getPeersList() {
-    return Array.from(this.peers.values()).map((p) => ({
+    const list = Array.from(this.peers.values()).map((p) => ({
       id: p.id,
       name: p.name,
       ip: p.ip,
       port: p.port,
       os: p.os,
+      visible: p.visible !== undefined ? p.visible : true,
       lastSeen: p.lastSeen,
     }));
+
+    // If host is visible, include host in the network directory
+    if (this.config.visible) {
+      list.unshift({
+        id: this.config.id,
+        name: this.config.name,
+        ip: getPrimaryLocalIP(),
+        port: this.serverPort,
+        os: getDeviceOS(),
+        visible: true,
+        lastSeen: Date.now(),
+        isHost: true,
+      });
+    }
+
+    return list;
   }
 
   notifyPeersChanged() {
