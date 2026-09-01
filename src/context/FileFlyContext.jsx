@@ -60,6 +60,11 @@ export function FileFlyProvider({ children }) {
   };
 
   const hostDeviceRef = useRef(null);
+  const myDeviceRef = useRef(myDevice);
+
+  useEffect(() => {
+    myDeviceRef.current = myDevice;
+  }, [myDevice]);
 
   // Initialize Socket and listeners
   useEffect(() => {
@@ -133,21 +138,19 @@ export function FileFlyProvider({ children }) {
     const unsubInitEvent = socketService.on('INIT_STATE', unsubInit);
 
     const unsubPeers = socketService.on('PEERS_UPDATE', (peersList) => {
-      setMyDevice((currentMyDevice) => {
-        const savedClientId = typeof window !== 'undefined' ? localStorage.getItem('filefly_client_id') : null;
-        const host = hostDeviceRef.current;
+      const currentMyDevice = myDeviceRef.current;
+      const savedClientId = typeof window !== 'undefined' ? localStorage.getItem('filefly_client_id') : null;
+      const host = hostDeviceRef.current;
 
-        const filtered = (peersList || []).filter((p) => {
-          if (!p || !p.id) return false;
-          if (p.id === currentMyDevice.id) return false;
-          if (savedClientId && p.id === savedClientId) return false;
-          if (currentMyDevice.isHost && (p.isHost || (host && p.id === host.id))) return false;
-          return true;
-        });
-
-        setPeers(filtered);
-        return currentMyDevice;
+      const filtered = (peersList || []).filter((p) => {
+        if (!p || !p.id) return false;
+        if (currentMyDevice?.id && p.id === currentMyDevice.id) return false;
+        if (savedClientId && p.id === savedClientId) return false;
+        if (currentMyDevice?.isHost && (p.isHost || (host && p.id === host.id))) return false;
+        return true;
       });
+
+      setPeers(filtered);
     });
 
     const unsubScanStatus = socketService.on('SCAN_STATUS', (status) => {

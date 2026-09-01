@@ -123,6 +123,12 @@ wss.on('connection', (ws, req) => {
           clientMeta.os = payload.os;
         }
 
+        // Cancel any pending disconnect removal for this client
+        if (payload.id && pendingDisconnectTimers.has(payload.id)) {
+          clearTimeout(pendingDisconnectTimers.get(payload.id));
+          pendingDisconnectTimers.delete(payload.id);
+        }
+
         if (payload.id && payload.id !== config.id) {
           discovery.addOrUpdatePeer({
             id: payload.id,
@@ -182,11 +188,23 @@ wss.on('connection', (ws, req) => {
     socketClientMap.delete(ws);
 
     if (clientMeta?.id && clientMeta.id !== config.id) {
-      discovery.peers.delete(clientMeta.id);
-      dispatchEvent('PEERS_UPDATE', discovery.getPeersList(), null);
+      // Check if this client still has other open connections
+      const hasOtherSockets = Array.from(socketClientMap.values()).some((c) => c.id === clientMeta.id);
+      if (!hasOtherSockets) {
+        // Wait 4 seconds before removing to prevent UI flickering on page refresh (F5)
+        const timer = setTimeout(() => {
+          pendingDisconnectTimers.delete(clientMeta.id);
+          discovery.peers.delete(clientMeta.id);
+          dispatchEvent('PEERS_UPDATE', discovery.getPeersList(), null);
+        }, 4000);
+        pendingDisconnectTimers.set(clientMeta.id, timer);
+      }
     }
   });
 });
+
+// Disconnect grace timers to prevent UI flicker when a user refreshes (F5)
+const pendingDisconnectTimers = new Map();
 
 // Start Server
 server.listen(PORT, '0.0.0.0', () => {
