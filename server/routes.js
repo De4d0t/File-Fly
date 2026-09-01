@@ -266,12 +266,16 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
 
       const osType = getDeviceOS();
       if (osType === 'windows') {
-        const winPath = path.resolve(dir);
-        spawn('explorer.exe', [winPath], { detached: true, stdio: 'ignore' }).unref();
+        const escaped = dir.replace(/'/g, "''");
+        exec(`powershell -NoProfile -Command "Start-Process explorer.exe -ArgumentList '${escaped}'"`, (err) => {
+          if (err) {
+            exec(`explorer.exe "${dir}"`);
+          }
+        });
       } else if (osType === 'mac') {
-        spawn('open', [dir], { detached: true, stdio: 'ignore' }).unref();
+        exec(`open "${dir}"`);
       } else if (osType === 'linux') {
-        spawn('xdg-open', [dir], { detached: true, stdio: 'ignore' }).unref();
+        exec(`xdg-open "${dir}"`);
       }
 
       res.json({ success: true, path: dir });
