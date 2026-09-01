@@ -114,53 +114,47 @@ export default function Header() {
           <VisibilityToggle />
         </div>
 
-        {/* Right: Quick Action Buttons */}
+        {/* Right: Quick Action Buttons (Icons Only) */}
         <div className="flex items-center gap-2">
           {/* Refresh / Scan peers button */}
           <button
             onClick={refreshPeers}
             disabled={isScanning}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border transition-all ${
+            className={`p-2.5 rounded-xl border transition-all flex items-center justify-center hover:scale-105 active:scale-95 shadow-sm ${
               isScanning
                 ? 'bg-sky-500/20 text-sky-300 border-sky-500/40 animate-pulse'
                 : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border-slate-700/80'
             }`}
-            title="فحص وبحث شامل عن جميع الأجهزة على الشبكة"
+            title={isScanning ? 'جاري فحص الشبكة...' : 'تحديث وفحص الأجهزة على الشبكة'}
           >
             <RefreshCw className={`w-4 h-4 text-sky-400 ${isScanning ? 'animate-spin' : ''}`} />
-            <span className="hidden md:inline">
-              {isScanning ? 'جاري فحص الشبكة...' : 'تحديث وفحص الشبكة'}
-            </span>
           </button>
 
           {/* QR Code Quick Connect for Mobile */}
           <button
             onClick={() => setIsQrModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/80 transition-all text-xs font-medium"
-            title="ربط الهاتف عبر الباركود QR"
+            className="p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/80 transition-all flex items-center justify-center hover:scale-105 active:scale-95 shadow-sm"
+            title="ربط الهاتف عبر رمز QR"
           >
             <QrCode className="w-4 h-4 text-brand-400" />
-            <span className="hidden md:inline">ربط الهاتف (QR)</span>
           </button>
 
           {/* History button */}
           <button
             onClick={() => setIsHistoryModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/80 transition-all text-xs font-medium"
+            className="p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/80 transition-all flex items-center justify-center hover:scale-105 active:scale-95 shadow-sm"
             title="سجل الملفات المنقولة"
           >
             <History className="w-4 h-4 text-purple-400" />
-            <span className="hidden md:inline">السجل</span>
           </button>
 
           {/* Open Downloads Folder */}
           <button
             onClick={openDownloadsFolder}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/80 transition-all text-xs font-medium"
+            className="p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/80 transition-all flex items-center justify-center hover:scale-105 active:scale-95 shadow-sm"
             title="فتح مجلد التنزيلات"
           >
             <FolderOpen className="w-4 h-4 text-amber-400" />
-            <span className="hidden md:inline">مجلد التنزيلات</span>
           </button>
         </div>
       </div>
