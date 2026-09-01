@@ -113,6 +113,27 @@ export function getPrimaryLocalIP() {
 }
 
 /**
+ * Calculates exact Subnet Broadcast addresses for all active adapters
+ */
+export function getBroadcastAddresses() {
+  const ips = getLocalIPAddresses();
+  const broadcasts = ['255.255.255.255'];
+
+  for (const item of ips) {
+    if (item.address && item.netmask) {
+      const addrParts = item.address.split('.').map(Number);
+      const maskParts = item.netmask.split('.').map(Number);
+      if (addrParts.length === 4 && maskParts.length === 4) {
+        const bcastParts = addrParts.map((part, i) => (part | (~maskParts[i] & 255)));
+        broadcasts.push(bcastParts.join('.'));
+      }
+    }
+  }
+
+  return [...new Set(broadcasts)];
+}
+
+/**
  * Detects current OS platform
  */
 export function getDeviceOS() {
@@ -123,3 +144,4 @@ export function getDeviceOS() {
   if (platform === 'android') return 'android';
   return 'unknown';
 }
+

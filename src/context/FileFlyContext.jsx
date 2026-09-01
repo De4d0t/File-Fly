@@ -33,31 +33,32 @@ export function FileFlyProvider({ children }) {
   // Active XHR upload controller reference
   const uploadControllerRef = useRef(null);
 
-  // Register mobile device if opening on a phone browser
-  const registerMobileClient = useCallback(async (deviceData) => {
-    try {
-      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-      const osType = /iPhone|iPad|iPod/i.test(navigator.userAgent)
-        ? 'ios'
-        : /Android/i.test(navigator.userAgent)
-        ? 'android'
-        : 'browser';
+  const isHostMachine = typeof window !== 'undefined' && (
+    Boolean(window.fileflyDesktop) ||
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1'
+  );
 
-      // Load saved mobile name from localStorage if exists
-      const savedMobileName = localStorage.getItem('filefly_device_name');
-      const finalName = savedMobileName || (isMobile ? (osType === 'ios' ? 'آيفون' : 'أندرويد') : deviceData?.name || 'متصفح');
+  const getClientOS = () => {
+    const ua = navigator.userAgent || '';
+    if (/iPhone|iPad|iPod/i.test(ua)) return 'ios';
+    if (/Android/i.test(ua)) return 'android';
+    if (/Mac/i.test(ua)) return 'mac';
+    if (/Win/i.test(ua)) return 'windows';
+    if (/Linux/i.test(ua)) return 'linux';
+    return 'browser';
+  };
 
-      await fetch('/api/peers/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: deviceData?.id || localStorage.getItem('filefly_device_id') || crypto.randomUUID(),
-          name: finalName,
-          os: osType,
-        }),
-      });
-    } catch (e) {}
-  }, []);
+  const getClientDefaultName = () => {
+    const os = getClientOS();
+    if (os === 'ios') return 'آيفون';
+    if (os === 'android') return 'هاتف أندرويد';
+    if (os === 'mac') return 'ماك بوك';
+    if (os === 'windows') return 'لابتوب 2 (Windows)';
+    return 'جهاز متصل';
+  };
+
+  const hostDeviceRef = useRef(null);
 
   // Initialize Socket and listeners
   useEffect(() => {
@@ -65,19 +66,72 @@ export function FileFlyProvider({ children }) {
 
     const unsubConnection = socketService.on('connection_change', (connected) => {
       setIsOnline(connected);
+      if (connected && !isHostMachine) {
+        const clientId = localStorage.getItem('filefly_client_id') || crypto.randomUUID();
+        localStorage.setItem('filefly_client_id', clientId);
+        const clientName = localStorage.getItem('filefly_device_name') || getClientDefaultName();
+        socketService.send('REGISTER_PEER', {
+          id: clientId,
+          name: clientName,
+          os: getClientOS(),
+        });
+      }
     });
 
-    const unsubInit = socketService.on('INIT_STATE', (data) => {
-      if (data.device) {
-        setMyDevice(data.device);
-        registerMobileClient(data.device);
+    const unsubInit = (data) => {
+      const host = data.hostDevice || data.device;
+      if (host) {
+        hostDeviceRef.current = host;
       }
-      if (data.peers) setPeers(data.peers);
+
+      if (isHostMachine && host) {
+        setMyDevice(host);
+        if (data.peers) setPeers(data.peers.filter((p) => p.id !== host.id));
+      } else {
+        // Remote client (Laptop 2 or Phone)
+        const clientId = localStorage.getItem('filefly_client_id') || crypto.randomUUID();
+        localStorage.setItem('filefly_client_id', clientId);
+        const clientName = localStorage.getItem('filefly_device_name') || getClientDefaultName();
+        const clientOS = getClientOS();
+
+        setMyDevice({
+          id: clientId,
+          name: clientName,
+          os: clientOS,
+          visible: true,
+          isClient: true,
+          ip: window.location.hostname,
+        });
+
+        // Announce our presence to the host
+        socketService.send('REGISTER_PEER', {
+          id: clientId,
+          name: clientName,
+          os: clientOS,
+        });
+
+        // Set peers: Show host + other peers
+        const otherPeers = (data.peers || []).filter((p) => p.id !== clientId && (!host || p.id !== host.id));
+        setPeers(host ? [host, ...otherPeers] : otherPeers);
+      }
+
       if (data.history) setHistory(data.history);
-    });
+    };
+
+    const unsubInitEvent = socketService.on('INIT_STATE', unsubInit);
 
     const unsubPeers = socketService.on('PEERS_UPDATE', (peersList) => {
-      setPeers(peersList || []);
+      const host = hostDeviceRef.current;
+      setMyDevice((currentMyDevice) => {
+        if (isHostMachine) {
+          setPeers(peersList.filter((p) => p.id !== currentMyDevice.id));
+        } else {
+          // Client on Laptop 2: Show Host + other peers
+          const others = peersList.filter((p) => p.id !== currentMyDevice.id && (!host || p.id !== host.id));
+          setPeers(host ? [host, ...others] : others);
+        }
+        return currentMyDevice;
+      });
     });
 
     const unsubScanStatus = socketService.on('SCAN_STATUS', (status) => {
@@ -85,7 +139,9 @@ export function FileFlyProvider({ children }) {
     });
 
     const unsubDevice = socketService.on('DEVICE_UPDATE', (updated) => {
-      setMyDevice((prev) => ({ ...prev, ...updated }));
+      if (isHostMachine) {
+        setMyDevice((prev) => ({ ...prev, ...updated }));
+      }
     });
 
     // When someone wants to send files to this device
@@ -140,7 +196,7 @@ export function FileFlyProvider({ children }) {
 
     return () => {
       unsubConnection();
-      unsubInit();
+      unsubInitEvent();
       unsubPeers();
       unsubScanStatus();
       unsubDevice();
@@ -149,7 +205,7 @@ export function FileFlyProvider({ children }) {
       unsubCompleted();
       unsubCancelled();
     };
-  }, [registerMobileClient]);
+  }, []);
 
   // Toggle Visibility (مكشوف / مخفي)
   const toggleVisibility = async () => {

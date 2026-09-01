@@ -68,16 +68,21 @@ if (fs.existsSync(distPath)) {
   });
 }
 
+// Map of web client sockets: clientId -> WebSocket
+const webClients = new Map();
+
 // WebSocket Connection Handling
 wss.on('connection', (ws, req) => {
   clients.add(ws);
+  let currentClientId = null;
+  const clientIP = req.socket.remoteAddress?.replace(/^::ffff:/, '') || req.headers['x-forwarded-for'] || '127.0.0.1';
 
   // Send initial state to newly connected client
   ws.send(
     JSON.stringify({
       type: 'INIT_STATE',
       payload: {
-        device: {
+        hostDevice: {
           id: config.id,
           name: config.name,
           visible: config.visible,
@@ -95,7 +100,23 @@ wss.on('connection', (ws, req) => {
     try {
       const { type, payload } = JSON.parse(messageBuffer.toString('utf8'));
 
-      if (type === 'SET_VISIBILITY') {
+      if (type === 'REGISTER_PEER') {
+        currentClientId = payload.id;
+        webClients.set(payload.id, ws);
+
+        if (payload.id && payload.id !== config.id) {
+          discovery.addOrUpdatePeer({
+            id: payload.id,
+            name: payload.name || 'حاسوب / هاتف',
+            ip: clientIP,
+            port: PORT,
+            os: payload.os || 'windows',
+            visible: true,
+            lastSeen: Date.now(),
+          });
+          broadcastToClients('PEERS_UPDATE', discovery.getPeersList());
+        }
+      } else if (type === 'SET_VISIBILITY') {
         discovery.setVisibility(payload.visible);
         broadcastToClients('DEVICE_UPDATE', {
           id: config.id,
@@ -128,6 +149,11 @@ wss.on('connection', (ws, req) => {
 
   ws.on('close', () => {
     clients.delete(ws);
+    if (currentClientId) {
+      webClients.delete(currentClientId);
+      discovery.peers.delete(currentClientId);
+      broadcastToClients('PEERS_UPDATE', discovery.getPeersList());
+    }
   });
 });
 

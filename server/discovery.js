@@ -1,5 +1,5 @@
 import dgram from 'dgram';
-import { getPrimaryLocalIP, getDeviceOS } from './networkUtils.js';
+import { getPrimaryLocalIP, getDeviceOS, getBroadcastAddresses } from './networkUtils.js';
 import { SubnetScanner } from './subnetScanner.js';
 
 const DISCOVERY_PORT = 53317;
@@ -147,12 +147,15 @@ export class PeerDiscovery {
     });
 
     const message = Buffer.from(payload, 'utf8');
+    const targets = getBroadcastAddresses();
 
-    // Broadcast to 255.255.255.255
-    this.socket.send(message, 0, message.length, DISCOVERY_PORT, '255.255.255.255', (err) => {
-      if (err && err.code !== 'ENETUNREACH') {
-        // Silent catch for network change glitches
-      }
+    // Broadcast to all active subnet interfaces & 255.255.255.255
+    targets.forEach((targetIP) => {
+      this.socket.send(message, 0, message.length, DISCOVERY_PORT, targetIP, (err) => {
+        if (err && err.code !== 'ENETUNREACH') {
+          // Silent catch
+        }
+      });
     });
   }
 
