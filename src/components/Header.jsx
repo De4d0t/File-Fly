@@ -85,11 +85,8 @@ export default function Header() {
 
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-1.5">
+              <h1 className="text-xl font-bold tracking-tight text-white">
                 FileFly
-                <span className="text-xs px-2 py-0.5 font-medium rounded-full bg-brand-500/10 text-brand-400 border border-brand-500/20">
-                  LAN Fast
-                </span>
               </h1>
             </div>
 
