@@ -20,6 +20,7 @@ export default function Header() {
   const { 
     myDevice, 
     isOnline, 
+    isScanning,
     setIsQrModalOpen, 
     setIsHistoryModalOpen, 
     setIsRenameModalOpen, 
@@ -115,14 +116,21 @@ export default function Header() {
 
         {/* Right: Quick Action Buttons */}
         <div className="flex items-center gap-2">
-          {/* Refresh peers button */}
+          {/* Refresh / Scan peers button */}
           <button
             onClick={refreshPeers}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/80 transition-all text-xs font-medium"
-            title="تحديث والبحث عن أجهزة جديدة"
+            disabled={isScanning}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border transition-all ${
+              isScanning
+                ? 'bg-sky-500/20 text-sky-300 border-sky-500/40 animate-pulse'
+                : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border-slate-700/80'
+            }`}
+            title="فحص وبحث شامل عن جميع الأجهزة على الشبكة"
           >
-            <RefreshCw className="w-4 h-4 text-sky-400" />
-            <span className="hidden md:inline">تحديث الأجهزة</span>
+            <RefreshCw className={`w-4 h-4 text-sky-400 ${isScanning ? 'animate-spin' : ''}`} />
+            <span className="hidden md:inline">
+              {isScanning ? 'جاري فحص الشبكة...' : 'تحديث وفحص الشبكة'}
+            </span>
           </button>
 
           {/* QR Code Quick Connect for Mobile */}

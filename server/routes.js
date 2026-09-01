@@ -95,6 +95,21 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
   });
 
   /**
+   * Trigger Active Subnet Scan
+   */
+  router.post('/peers/scan', async (req, res) => {
+    if (discovery.scanner) {
+      discovery.scanner.scanSubnet();
+    }
+    discovery.announce('ANNOUNCE');
+    res.json({
+      success: true,
+      message: 'جاري فحص عناوين الشبكة المحلية...',
+      peers: discovery.getPeersList(),
+    });
+  });
+
+  /**
    * Register a Mobile Web Client (Direct Peer Handshake)
    */
   router.post('/peers/register', (req, res) => {

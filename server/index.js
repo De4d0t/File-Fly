@@ -40,9 +40,16 @@ const transferEngine = new TransferEngine(config, (event) => {
 });
 
 // Initialize peer discovery
-const discovery = new PeerDiscovery(config, PORT, (peersList) => {
-  broadcastToClients('PEERS_UPDATE', peersList);
-});
+const discovery = new PeerDiscovery(
+  config,
+  PORT,
+  (peersList) => {
+    broadcastToClients('PEERS_UPDATE', peersList);
+  },
+  (status) => {
+    broadcastToClients('SCAN_STATUS', status);
+  }
+);
 
 // Setup Express Middlewares
 app.use(cors({ origin: '*' }));
@@ -102,8 +109,11 @@ wss.on('connection', (ws, req) => {
           name: config.name,
           visible: config.visible,
         });
-      } else if (type === 'REFRESH_PEERS') {
+      } else if (type === 'REFRESH_PEERS' || type === 'SCAN_SUBNET') {
         discovery.announce('ANNOUNCE');
+        if (discovery.scanner) {
+          discovery.scanner.scanSubnet();
+        }
         ws.send(
           JSON.stringify({
             type: 'PEERS_UPDATE',

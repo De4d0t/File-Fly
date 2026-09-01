@@ -19,6 +19,7 @@ export function FileFlyProvider({ children }) {
   const [isOnline, setIsOnline] = useState(false);
   const [peers, setPeers] = useState([]);
   const [history, setHistory] = useState([]);
+  const [isScanning, setIsScanning] = useState(false);
   const [pendingIncomingRequest, setPendingIncomingRequest] = useState(null);
   
   // Active transfer state for progress bars
@@ -79,6 +80,10 @@ export function FileFlyProvider({ children }) {
       setPeers(peersList || []);
     });
 
+    const unsubScanStatus = socketService.on('SCAN_STATUS', (status) => {
+      setIsScanning(Boolean(status?.scanning));
+    });
+
     const unsubDevice = socketService.on('DEVICE_UPDATE', (updated) => {
       setMyDevice((prev) => ({ ...prev, ...updated }));
     });
@@ -137,6 +142,7 @@ export function FileFlyProvider({ children }) {
       unsubConnection();
       unsubInit();
       unsubPeers();
+      unsubScanStatus();
       unsubDevice();
       unsubRequest();
       unsubProgress();
@@ -343,6 +349,7 @@ export function FileFlyProvider({ children }) {
         isOnline,
         peers,
         history,
+        isScanning,
         activeTransfer,
         pendingIncomingRequest,
         isQrModalOpen,

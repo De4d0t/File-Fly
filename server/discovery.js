@@ -1,20 +1,32 @@
 import dgram from 'dgram';
 import { getPrimaryLocalIP, getDeviceOS } from './networkUtils.js';
+import { SubnetScanner } from './subnetScanner.js';
 
 const DISCOVERY_PORT = 53317;
 const BROADCAST_INTERVAL_MS = 2500;
-const PEER_TIMEOUT_MS = 8000;
+const PEER_TIMEOUT_MS = 12000;
+const SUBNET_SCAN_INTERVAL_MS = 30000; // Auto-scan whole subnet every 30s
 
 export class PeerDiscovery {
-  constructor(config, serverPort = 53316, onPeersChange = () => {}) {
+  constructor(config, serverPort = 53316, onPeersChange = () => {}, onScanStatus = () => {}) {
     this.config = config;
     this.serverPort = serverPort;
     this.onPeersChange = onPeersChange;
+    this.onScanStatus = onScanStatus;
     this.peers = new Map(); // id -> peer data
     this.socket = null;
     this.broadcastTimer = null;
     this.cleanupTimer = null;
+    this.subnetTimer = null;
     this.isRunning = false;
+
+    // Subnet Scanner for 100% reliable discovery across all routers
+    this.scanner = new SubnetScanner(
+      this.config.id,
+      this.serverPort,
+      (peer) => this.addOrUpdatePeer(peer),
+      (status) => this.onScanStatus(status)
+    );
   }
 
   /**
@@ -50,6 +62,16 @@ export class PeerDiscovery {
         this.isRunning = true;
         this.startBroadcasting();
         this.startCleanupTimer();
+
+        // Initial fast subnet sweep after 1.5s
+        setTimeout(() => {
+          if (this.isRunning) this.scanner.scanSubnet();
+        }, 1500);
+
+        // Recurring subnet sweep
+        this.subnetTimer = setInterval(() => {
+          if (this.isRunning) this.scanner.scanSubnet();
+        }, SUBNET_SCAN_INTERVAL_MS);
       });
     } catch (e) {
       console.error('[Discovery] Failed to bind port:', e);
@@ -220,6 +242,7 @@ export class PeerDiscovery {
     }
     if (this.broadcastTimer) clearInterval(this.broadcastTimer);
     if (this.cleanupTimer) clearInterval(this.cleanupTimer);
+    if (this.subnetTimer) clearInterval(this.subnetTimer);
     if (this.socket) {
       try {
         this.socket.close();

@@ -13,10 +13,21 @@ import { useFileFly } from '../context/FileFlyContext.jsx';
 import DeviceCard from './DeviceCard.jsx';
 
 export default function DeviceGrid() {
-  const { peers, myDevice, setIsQrModalOpen } = useFileFly();
+  const { peers, myDevice, isScanning, setIsQrModalOpen } = useFileFly();
 
   return (
     <div className="w-full">
+      {/* Active LAN Scanning Alert Banner */}
+      {isScanning && (
+        <div className="mb-6 flex items-center justify-between p-3.5 rounded-2xl bg-sky-500/10 border border-sky-500/30 text-sky-300 text-xs font-medium animate-pulse">
+          <div className="flex items-center gap-2">
+            <Radio className="w-4 h-4 animate-spin text-sky-400" />
+            <span>جاري فحص جميع عناوين الشبكة المحلية (LAN Auto-Scan) لاكتشاف الأجهزة المتاحة...</span>
+          </div>
+          <span className="text-[11px] font-mono opacity-70">Port 53316</span>
+        </div>
+      )}
+
       {/* Section Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-2.5">
@@ -31,7 +42,7 @@ export default function DeviceGrid() {
               </span>
             </h2>
             <p className="text-xs text-slate-400">
-              جميع الأجهزة المتصلة بنفس شبكة الواي فاي وتطبيق FileFly مفتوح لديها
+              جميع الأجهزة المتصلة بنفس شبكة الواي فاي ووضع الظهور لديها مفعّل
             </p>
           </div>
         </div>
