@@ -20,7 +20,7 @@ export default function TransferModal() {
   const { sender, files, totalBytes } = pendingIncomingRequest;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md">
       <div className="relative w-full max-w-lg rounded-3xl glass-panel p-6 sm:p-8 border border-emerald-500/30 shadow-2xl shadow-emerald-500/10 animate-in fade-in zoom-in-95 duration-200">
         {/* Glow Header Icon */}
         <div className="flex items-center gap-4 mb-6">

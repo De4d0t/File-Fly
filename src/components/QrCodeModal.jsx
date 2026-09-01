@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   QrCode, 
   X, 
@@ -7,18 +7,24 @@ import {
   ExternalLink, 
   Smartphone, 
   Wifi,
-  Sparkles
+  Sparkles,
+  CheckCircle2
 } from 'lucide-react';
 import { useFileFly } from '../context/FileFlyContext.jsx';
 
 export default function QrCodeModal() {
-  const { isQrModalOpen, setIsQrModalOpen, myDevice } = useFileFly();
+  const { isQrModalOpen, setIsQrModalOpen, myDevice, peers, pendingIncomingRequest } = useFileFly();
   const [qrData, setQrData] = useState({ url: '', qrDataUrl: '' });
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [justConnected, setJustConnected] = useState(false);
+  
+  const initialPeersCountRef = useRef(peers.length);
 
   useEffect(() => {
     if (isQrModalOpen) {
+      initialPeersCountRef.current = peers.length;
+      setJustConnected(false);
       setLoading(true);
       fetch('/api/qr')
         .then((res) => res.json())
@@ -32,6 +38,25 @@ export default function QrCodeModal() {
     }
   }, [isQrModalOpen]);
 
+  // Automatically close modal when a new device connects
+  useEffect(() => {
+    if (isQrModalOpen && peers.length > initialPeersCountRef.current) {
+      setJustConnected(true);
+      const timer = setTimeout(() => {
+        setIsQrModalOpen(false);
+        setJustConnected(false);
+      }, 700);
+      return () => clearTimeout(timer);
+    }
+  }, [peers.length, isQrModalOpen, setIsQrModalOpen]);
+
+  // Immediately close QR modal if an incoming file transfer request arrives
+  useEffect(() => {
+    if (pendingIncomingRequest && isQrModalOpen) {
+      setIsQrModalOpen(false);
+    }
+  }, [pendingIncomingRequest, isQrModalOpen, setIsQrModalOpen]);
+
   if (!isQrModalOpen) return null;
 
   const handleCopyLink = () => {
@@ -44,7 +69,18 @@ export default function QrCodeModal() {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md">
-      <div className="relative w-full max-w-md rounded-3xl glass-panel p-6 sm:p-8 border border-sky-500/30 shadow-2xl animate-in fade-in zoom-in-95 duration-200 text-center">
+      <div className="relative w-full max-w-md rounded-3xl glass-panel p-6 sm:p-8 border border-sky-500/30 shadow-2xl animate-in fade-in zoom-in-95 duration-200 text-center overflow-hidden">
+        {/* Success Connection Overlay */}
+        {justConnected && (
+          <div className="absolute inset-0 bg-slate-950/95 backdrop-blur-md border border-emerald-500/50 flex flex-col items-center justify-center p-6 text-center z-30 animate-in fade-in duration-150">
+            <div className="w-16 h-16 rounded-3xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 glow-green mb-3">
+              <CheckCircle2 className="w-10 h-10 animate-bounce" />
+            </div>
+            <h4 className="text-xl font-bold text-white mb-1">تم ربط الهاتف بنجاح!</h4>
+            <p className="text-xs text-emerald-400">جاري إغلاق النافذة والبدء في النقل...</p>
+          </div>
+        )}
+
         {/* Close Button */}
         <button
           onClick={() => setIsQrModalOpen(false)}
