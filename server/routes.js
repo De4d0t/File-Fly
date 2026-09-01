@@ -3,7 +3,8 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import QRCode from 'qrcode';
-import { exec } from 'child_process';
+import { spawn, exec } from 'child_process';
+import os from 'os';
 import {
   getPrimaryLocalIP,
   getLocalIPAddresses,
@@ -257,7 +258,7 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
    * Open Downloads Folder in OS File Explorer
    */
   router.post('/open-downloads', (req, res) => {
-    const dir = config.downloadsDir;
+    const dir = config.downloadsDir || path.join(os.homedir(), 'Downloads', 'FileFly');
     try {
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
@@ -265,12 +266,12 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
 
       const osType = getDeviceOS();
       if (osType === 'windows') {
-        const winPath = path.resolve(dir).replace(/\//g, '\\');
-        exec(`explorer.exe "${winPath}"`);
+        const winPath = path.resolve(dir);
+        spawn('explorer.exe', [winPath], { detached: true, stdio: 'ignore' }).unref();
       } else if (osType === 'mac') {
-        exec(`open "${dir}"`);
+        spawn('open', [dir], { detached: true, stdio: 'ignore' }).unref();
       } else if (osType === 'linux') {
-        exec(`xdg-open "${dir}"`);
+        spawn('xdg-open', [dir], { detached: true, stdio: 'ignore' }).unref();
       }
 
       res.json({ success: true, path: dir });
