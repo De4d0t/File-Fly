@@ -76,3 +76,20 @@ export function getFileTypeCategory(filename = '') {
 
   return { type: 'other', label: 'ملف', color: 'text-slate-400 bg-slate-400/10 border-slate-400/20' };
 }
+
+/**
+ * Universal safe UUID generator that works across all browsers & HTTP contexts
+ */
+export function generateUUID() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    try {
+      return crypto.randomUUID();
+    } catch (e) {}
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+

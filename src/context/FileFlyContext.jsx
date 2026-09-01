@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { socketService } from '../services/socketClient.js';
 import { requestTransferToPeer, uploadFilesToPeer, checkTransferApproval } from '../services/fileSender.js';
 import { playTransferRequestSound, playSuccessSound, playDeclinedSound } from '../utils/soundEffects.js';
+import { generateUUID } from '../utils/formatters.js';
 
 const FileFlyContext = createContext(null);
 
@@ -67,7 +68,7 @@ export function FileFlyProvider({ children }) {
     const unsubConnection = socketService.on('connection_change', (connected) => {
       setIsOnline(connected);
       if (connected && !isHostMachine) {
-        const clientId = localStorage.getItem('filefly_client_id') || crypto.randomUUID();
+        const clientId = localStorage.getItem('filefly_client_id') || generateUUID();
         localStorage.setItem('filefly_client_id', clientId);
         const clientName = localStorage.getItem('filefly_device_name') || getClientDefaultName();
         socketService.send('REGISTER_PEER', {
@@ -89,7 +90,7 @@ export function FileFlyProvider({ children }) {
         if (data.peers) setPeers(data.peers.filter((p) => p.id !== host.id));
       } else {
         // Remote client (Laptop 2 or Phone)
-        const clientId = localStorage.getItem('filefly_client_id') || crypto.randomUUID();
+        const clientId = localStorage.getItem('filefly_client_id') || generateUUID();
         localStorage.setItem('filefly_client_id', clientId);
         const clientName = localStorage.getItem('filefly_device_name') || getClientDefaultName();
         const clientOS = getClientOS();
