@@ -4,7 +4,7 @@ import { SubnetScanner } from './subnetScanner.js';
 
 const DISCOVERY_PORT = 53317;
 const BROADCAST_INTERVAL_MS = 2500;
-const PEER_TIMEOUT_MS = 12000;
+const PEER_TIMEOUT_MS = 25000;
 const SUBNET_SCAN_INTERVAL_MS = 30000; // Auto-scan whole subnet every 30s
 
 export class PeerDiscovery {
@@ -172,6 +172,11 @@ export class PeerDiscovery {
       let changed = false;
 
       for (const [id, peer] of this.peers.entries()) {
+        // Connected WebSocket web clients are only removed on disconnect (ws.close)
+        if (peer.isWebClient) {
+          continue;
+        }
+
         if (now - peer.lastSeen > PEER_TIMEOUT_MS) {
           this.peers.delete(id);
           changed = true;
@@ -181,7 +186,7 @@ export class PeerDiscovery {
       if (changed) {
         this.notifyPeersChanged();
       }
-    }, 2000);
+    }, 4000);
   }
 
   /**

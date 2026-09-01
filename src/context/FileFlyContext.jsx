@@ -85,9 +85,18 @@ export function FileFlyProvider({ children }) {
         hostDeviceRef.current = host;
       }
 
-      if (isHostMachine && host) {
+      const isHost = Boolean(
+        data.isLocalHost ||
+        window.fileflyDesktop ||
+        window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1'
+      );
+
+      if (isHost && host) {
         setMyDevice(host);
-        if (data.peers) setPeers(data.peers.filter((p) => p.id !== host.id));
+        if (data.peers) {
+          setPeers(data.peers.filter((p) => p.id !== host.id));
+        }
       } else {
         // Remote client (Laptop 2 or Phone)
         const clientId = localStorage.getItem('filefly_client_id') || generateUUID();
@@ -95,14 +104,16 @@ export function FileFlyProvider({ children }) {
         const clientName = localStorage.getItem('filefly_device_name') || getClientDefaultName();
         const clientOS = getClientOS();
 
-        setMyDevice({
+        const clientDevice = {
           id: clientId,
           name: clientName,
           os: clientOS,
           visible: true,
           isClient: true,
-          ip: window.location.hostname,
-        });
+          ip: data.clientIP || window.location.hostname,
+        };
+
+        setMyDevice(clientDevice);
 
         // Announce our presence to the host
         socketService.send('REGISTER_PEER', {
@@ -111,9 +122,9 @@ export function FileFlyProvider({ children }) {
           os: clientOS,
         });
 
-        // Set peers: Show host + other peers
-        const otherPeers = (data.peers || []).filter((p) => p.id !== clientId && (!host || p.id !== host.id));
-        setPeers(host ? [host, ...otherPeers] : otherPeers);
+        // Set peers: Show host + other peers, filter out self
+        const allFiltered = (data.peers || []).filter((p) => p.id !== clientId);
+        setPeers(allFiltered);
       }
 
       if (data.history) setHistory(data.history);

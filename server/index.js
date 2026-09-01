@@ -75,20 +75,25 @@ const webClients = new Map();
 wss.on('connection', (ws, req) => {
   clients.add(ws);
   let currentClientId = null;
-  const clientIP = req.socket.remoteAddress?.replace(/^::ffff:/, '') || req.headers['x-forwarded-for'] || '127.0.0.1';
+  const rawClientIP = req.socket.remoteAddress?.replace(/^::ffff:/, '') || req.headers['x-forwarded-for'] || '127.0.0.1';
+  const primaryHostIP = getPrimaryLocalIP();
+  const isLocalHost = rawClientIP === '127.0.0.1' || rawClientIP === '::1' || rawClientIP === primaryHostIP || rawClientIP === 'localhost';
 
   // Send initial state to newly connected client
   ws.send(
     JSON.stringify({
       type: 'INIT_STATE',
       payload: {
+        isLocalHost,
+        clientIP: rawClientIP,
         hostDevice: {
           id: config.id,
           name: config.name,
           visible: config.visible,
           os: getDeviceOS(),
-          ip: getPrimaryLocalIP(),
+          ip: primaryHostIP,
           port: PORT,
+          isHost: true,
         },
         peers: discovery.getPeersList(),
         history: transferEngine.getHistory(),
@@ -108,10 +113,11 @@ wss.on('connection', (ws, req) => {
           discovery.addOrUpdatePeer({
             id: payload.id,
             name: payload.name || 'حاسوب / هاتف',
-            ip: clientIP,
+            ip: rawClientIP,
             port: PORT,
             os: payload.os || 'windows',
             visible: true,
+            isWebClient: true,
             lastSeen: Date.now(),
           });
           broadcastToClients('PEERS_UPDATE', discovery.getPeersList());
