@@ -32,32 +32,48 @@ export default function DeviceGrid() {
 
   return (
     <div className="w-full">
-      {/* Active LAN Scanning Alert Banner */}
+      {/* Futuristic Laser Scan Line on Active Network Scan */}
       {isScanning && (
-        <div className="mb-6 flex items-center justify-between p-3.5 rounded-2xl bg-sky-500/10 border border-sky-500/30 text-sky-300 text-xs font-medium animate-pulse">
-          <div className="flex items-center gap-2">
-            <Radio className="w-4 h-4 animate-spin text-sky-400" />
-            <span>جاري فحص جميع عناوين الشبكة المحلية (LAN Auto-Scan) لاكتشاف الأجهزة المتاحة...</span>
-          </div>
-          <span className="text-[11px] font-mono opacity-70">Port 53316</span>
+        <div className="relative w-full h-1 overflow-hidden rounded-full bg-slate-800/60 mb-6 border border-sky-500/20">
+          <div className="absolute inset-y-0 bg-gradient-to-r from-transparent via-sky-400 to-transparent w-1/3 animate-laser-scan rounded-full shadow-[0_0_12px_rgba(56,189,248,0.9)]"></div>
         </div>
       )}
 
       {/* Section Header */}
       <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400">
-            <Radio className="w-4 h-4 animate-pulse" />
+        <div className="flex items-center gap-3">
+          {/* Animated Radar Icon Box */}
+          <div className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${
+            isScanning 
+              ? 'bg-sky-500/20 border border-sky-400/50 shadow-lg shadow-sky-500/25 ring-2 ring-sky-500/20' 
+              : 'bg-sky-500/10 border border-sky-500/20 text-sky-400'
+          }`}>
+            <Radio className={`w-4 h-4 text-sky-400 ${isScanning ? 'animate-spin' : 'animate-pulse'}`} />
           </div>
+
           <div>
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              الأجهزة المكتشفة على الشبكة
-              <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 font-mono">
+            <div className="flex items-center gap-2.5">
+              <h2 className="text-lg font-bold text-white">
+                الأجهزة المكتشفة على الشبكة
+              </h2>
+              <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 font-mono font-bold">
                 {filteredPeers.length}
               </span>
-            </h2>
-            <p className="text-xs text-slate-400">
-              جميع الأجهزة المتصلة بنفس شبكة الواي فاي ووضع الظهور لديها مفعّل
+
+              {/* Live Radar Active Badge */}
+              {isScanning && (
+                <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-sky-500/15 border border-sky-400/30 text-sky-300 text-[11px] font-medium shadow-sm animate-pulse">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-500"></span>
+                  </span>
+                  <span>رادار الفحص نشط...</span>
+                </div>
+              )}
+            </div>
+
+            <p className="text-xs text-slate-400 mt-0.5">
+              الأجهزة المتصلة بالشبكة وجاهزة لنقل واستقبال الملفات
             </p>
           </div>
         </div>

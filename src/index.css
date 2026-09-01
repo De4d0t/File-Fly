@@ -59,3 +59,18 @@
 .app-no-drag {
   -webkit-app-region: no-drag;
 }
+
+/* Futuristic Scanning Laser Beam Animation */
+@keyframes laser-scan {
+  0% {
+    left: -35%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+
+.animate-laser-scan {
+  position: absolute;
+  animation: laser-scan 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
