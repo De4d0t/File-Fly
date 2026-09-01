@@ -246,9 +246,10 @@ export function FileFlyProvider({ children }) {
         setHistory((prev) => [transfer.historyItem, ...prev]);
       }
 
+      // Keep completion card visible for 12 seconds so receiver can comfortably click "Open Folder"
       setTimeout(() => {
-        setActiveTransfer(null);
-      }, 4000);
+        setActiveTransfer((curr) => (curr?.status === 'completed' ? null : curr));
+      }, 12000);
     });
 
     // Transfer declined by recipient
@@ -270,9 +271,10 @@ export function FileFlyProvider({ children }) {
         );
       }
 
+      // Keep declined notification visible for 9 seconds
       setTimeout(() => {
         setActiveTransfer((curr) => (curr?.status === 'declined' ? null : curr));
-      }, 4000);
+      }, 9000);
     });
 
     // Transfer cancelled
@@ -458,7 +460,9 @@ export function FileFlyProvider({ children }) {
             ...transferState,
             status: 'declined',
           });
-          setTimeout(() => setActiveTransfer(null), 3000);
+          setTimeout(() => {
+            setActiveTransfer((curr) => (curr?.status === 'declined' ? null : curr));
+          }, 9000);
           return;
         }
       }
@@ -468,7 +472,9 @@ export function FileFlyProvider({ children }) {
           ...transferState,
           status: 'timeout',
         });
-        setTimeout(() => setActiveTransfer(null), 3000);
+        setTimeout(() => {
+          setActiveTransfer((curr) => (curr?.status === 'timeout' ? null : curr));
+        }, 8000);
         return;
       }
 
@@ -511,7 +517,9 @@ export function FileFlyProvider({ children }) {
             ...prev,
           ]);
 
-          setTimeout(() => setActiveTransfer(null), 4000);
+          setTimeout(() => {
+            setActiveTransfer((curr) => (curr?.status === 'completed' ? null : curr));
+          }, 9000);
         },
         (err) => {
           playDeclinedSound();
@@ -520,7 +528,9 @@ export function FileFlyProvider({ children }) {
             if (!prev) return null;
             return { ...prev, status: 'error', errorMessage: err.message };
           });
-          setTimeout(() => setActiveTransfer(null), 4000);
+          setTimeout(() => {
+            setActiveTransfer((curr) => (curr?.status === 'error' ? null : curr));
+          }, 8000);
         }
       );
     } catch (err) {
@@ -531,7 +541,9 @@ export function FileFlyProvider({ children }) {
         status: 'error',
         errorMessage: err.message,
       });
-      setTimeout(() => setActiveTransfer(null), 4000);
+      setTimeout(() => {
+        setActiveTransfer((curr) => (curr?.status === 'error' ? null : curr));
+      }, 8000);
     }
   };
 
