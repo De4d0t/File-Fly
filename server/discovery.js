@@ -174,6 +174,8 @@ export class PeerDiscovery {
 
   addOrUpdatePeer(peer) {
     if (!peer || !peer.id || peer.id === this.config.id) return;
+    const hostIP = getPrimaryLocalIP();
+    if (peer.ip === hostIP || peer.ip === '127.0.0.1') return;
 
     if (peer.visible === false) {
       if (this.peers.has(peer.id)) {
@@ -206,25 +208,30 @@ export class PeerDiscovery {
   }
 
   getPeersList() {
-    // Only return peers that are actively visible
-    const list = Array.from(this.peers.values())
-      .filter((p) => p.visible !== false)
-      .map((p) => ({
-        id: p.id,
-        name: p.name,
-        ip: p.ip,
-        port: p.port,
-        os: p.os,
-        visible: true,
-        lastSeen: p.lastSeen,
-      }));
+    const map = new Map();
+    const hostIP = getPrimaryLocalIP();
 
-    // If host is visible, include host in the network directory
+    // 1. Add remote peers (Strictly exclude self ID and host IP)
+    for (const p of this.peers.values()) {
+      if (p.visible !== false && p.id !== this.config.id && p.ip !== hostIP && p.ip !== '127.0.0.1') {
+        map.set(p.id, {
+          id: p.id,
+          name: p.name,
+          ip: p.ip,
+          port: p.port,
+          os: p.os,
+          visible: true,
+          lastSeen: p.lastSeen,
+        });
+      }
+    }
+
+    // 2. Add the host machine exactly once if visible
     if (this.config.visible) {
-      list.unshift({
+      map.set(this.config.id, {
         id: this.config.id,
         name: this.config.name,
-        ip: getPrimaryLocalIP(),
+        ip: hostIP,
         port: this.serverPort,
         os: getDeviceOS(),
         visible: true,
@@ -233,7 +240,7 @@ export class PeerDiscovery {
       });
     }
 
-    return list;
+    return Array.from(map.values());
   }
 
   setVisibility(isVisible) {
