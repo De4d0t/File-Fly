@@ -88,9 +88,9 @@ export default function DeviceCard({ peer }) {
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className={`relative group rounded-3xl p-5 transition-all duration-300 border ${
+      className={`relative group overflow-hidden rounded-3xl p-5 transition-all duration-300 border ${
         isDragOver
-          ? 'bg-brand-500/20 border-brand-400 shadow-2xl shadow-brand-500/30 scale-[1.03]'
+          ? 'bg-emerald-500/20 border-emerald-400 shadow-2xl shadow-emerald-500/30 scale-[1.02]'
           : 'glass-card hover:border-sky-500/40 hover:shadow-xl hover:shadow-sky-500/10'
       }`}
     >

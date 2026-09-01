@@ -1,7 +1,6 @@
 import React from 'react';
 import Header from './components/Header.jsx';
 import DeviceGrid from './components/DeviceGrid.jsx';
-import DropZone from './components/DropZone.jsx';
 import TransferModal from './components/TransferModal.jsx';
 import ActiveTransfers from './components/ActiveTransfers.jsx';
 import QrCodeModal from './components/QrCodeModal.jsx';
@@ -21,9 +20,6 @@ export default function App() {
 
       {/* App Header */}
       <Header />
-
-      {/* Global Drag & Drop listener */}
-      <DropZone />
 
       {/* Main Content Viewport */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-8">
