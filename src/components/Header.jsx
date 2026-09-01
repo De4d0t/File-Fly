@@ -9,18 +9,18 @@ import {
   Minus, 
   Square, 
   X,
-  Wifi,
-  WifiOff,
+  Eye,
+  EyeOff,
   Laptop
 } from 'lucide-react';
 import { useFileFly } from '../context/FileFlyContext.jsx';
-import VisibilityToggle from './VisibilityToggle.jsx';
 
 export default function Header() {
   const { 
     myDevice, 
     isOnline, 
     isScanning,
+    toggleVisibility,
     setIsQrModalOpen, 
     setIsHistoryModalOpen, 
     setIsRenameModalOpen, 
@@ -29,6 +29,7 @@ export default function Header() {
   } = useFileFly();
 
   const isDesktop = typeof window !== 'undefined' && Boolean(window.fileflyDesktop);
+  const isVisible = myDevice?.visible;
 
   const handleMinimize = () => window.fileflyDesktop?.minimizeWindow();
   const handleMaximize = () => window.fileflyDesktop?.maximizeWindow();
@@ -72,7 +73,7 @@ export default function Header() {
       )}
 
       {/* Main Header Bar */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-4">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
         {/* Logo & Identity */}
         <div className="flex items-center gap-3">
           <div className="relative flex items-center justify-center w-11 h-11 rounded-2xl bg-gradient-to-tr from-brand-600 via-brand-500 to-sky-400 p-0.5 shadow-lg shadow-brand-500/20">
@@ -109,13 +110,36 @@ export default function Header() {
           </div>
         </div>
 
-        {/* Center: Visibility Toggle */}
-        <div className="flex items-center">
-          <VisibilityToggle />
-        </div>
+        {/* Unified Glass Action Toolbar */}
+        <div className="flex items-center gap-1.5 p-1.5 rounded-2xl bg-slate-900/80 border border-slate-800 backdrop-blur-md shadow-lg shadow-black/20">
+          {/* Visibility Toggle Icon Button */}
+          <button
+            onClick={toggleVisibility}
+            className={`p-2.5 rounded-xl border transition-all flex items-center justify-center relative hover:scale-105 active:scale-95 shadow-sm ${
+              isVisible
+                ? 'bg-emerald-500/15 hover:bg-emerald-500/25 border-emerald-500/40 text-emerald-400 glow-green'
+                : 'bg-slate-800/80 hover:bg-slate-700 border-slate-700/80 text-slate-400'
+            }`}
+            title={isVisible ? 'الجهاز مكشوف على الشبكة (مرئي - انقر للإخفاء)' : 'وضع التخفي - مخفي (انقر للظهور)'}
+          >
+            {isVisible ? (
+              <>
+                <span className="absolute top-1 right-1 flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                <Eye className="w-4 h-4 text-emerald-400" />
+              </>
+            ) : (
+              <>
+                <span className="absolute top-1 right-1 inline-flex rounded-full h-1.5 w-1.5 bg-slate-500"></span>
+                <EyeOff className="w-4 h-4 text-slate-400" />
+              </>
+            )}
+          </button>
 
-        {/* Right: Quick Action Buttons (Icons Only) */}
-        <div className="flex items-center gap-2">
+          <div className="w-[1px] h-5 bg-slate-800/80 mx-0.5" />
+
           {/* Refresh / Scan peers button */}
           <button
             onClick={refreshPeers}
