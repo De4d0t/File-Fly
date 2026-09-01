@@ -3,37 +3,62 @@
  */
 
 export async function requestTransferToPeer(peer, files, myDevice) {
-  const fileMetaList = Array.from(files).map((file, idx) => ({
+  const fileMetaList = Array.from(files).map((file) => ({
     name: file.name,
     size: file.size,
     type: file.type || 'application/octet-stream',
     relativePath: file.webkitRelativePath || file.name,
   }));
 
-  // Target endpoint (if local on desktop, or remote peer IP)
-  const targetBaseUrl = `http://${peer.ip}:${peer.port || 53316}`;
+  const localBaseUrl = typeof window !== 'undefined' ? window.location.origin : 'http://127.0.0.1:53316';
+  
+  // If recipient is a web client (e.g. phone/browser) or shares the host, route through local server
+  let targetBaseUrl = localBaseUrl;
+  if (peer.isWebClient || !peer.ip || peer.ip === myDevice.ip || peer.ip === '127.0.0.1' || peer.ip === window.location.hostname) {
+    targetBaseUrl = localBaseUrl;
+  } else {
+    // Try peer's server endpoint, fallback to local host
+    targetBaseUrl = `http://${peer.ip}:${peer.port || 53316}`;
+  }
 
-  const response = await fetch(`${targetBaseUrl}/api/transfer/request`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      sender: {
-        id: myDevice.id,
-        name: myDevice.name,
-        ip: myDevice.ip,
-        os: myDevice.os,
-      },
-      recipient: {
-        id: peer.id,
-        name: peer.name,
-        ip: peer.ip,
-      },
-      files: fileMetaList,
-    }),
-  });
+  const payload = {
+    sender: {
+      id: myDevice.id,
+      name: myDevice.name,
+      ip: myDevice.ip,
+      os: myDevice.os,
+    },
+    recipient: {
+      id: peer.id,
+      name: peer.name,
+      ip: peer.ip,
+    },
+    files: fileMetaList,
+  };
 
-  if (!response.ok) {
-    throw new Error(`فشل إرسال طلب النقل (${response.status})`);
+  let response;
+  try {
+    response = await fetch(`${targetBaseUrl}/api/transfer/request`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch (err) {
+    // If remote connection failed, fallback to local server
+    if (targetBaseUrl !== localBaseUrl) {
+      targetBaseUrl = localBaseUrl;
+      response = await fetch(`${targetBaseUrl}/api/transfer/request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    } else {
+      throw err;
+    }
+  }
+
+  if (!response || !response.ok) {
+    throw new Error(`فشل إرسال طلب النقل (${response?.status || 'Network Error'})`);
   }
 
   const result = await response.json();
