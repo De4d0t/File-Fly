@@ -27,9 +27,10 @@ export class PeerDiscovery {
       (discoveredPeer) => {
         this.addOrUpdatePeer(discoveredPeer);
       },
-      (isScanning) => {
+      (status) => {
+        const scanning = typeof status === 'boolean' ? status : Boolean(status?.scanning);
         if (typeof this.onScanStatus === 'function') {
-          this.onScanStatus({ scanning: isScanning });
+          this.onScanStatus({ scanning });
         }
       }
     );

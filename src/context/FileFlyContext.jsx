@@ -169,7 +169,8 @@ export function FileFlyProvider({ children }) {
     });
 
     const unsubScanStatus = socketService.on('SCAN_STATUS', (status) => {
-      setIsScanning(Boolean(status?.scanning));
+      const scanning = typeof status === 'boolean' ? status : Boolean(status?.scanning);
+      setIsScanning(scanning);
     });
 
     const unsubDevice = socketService.on('DEVICE_UPDATE', (updated) => {
@@ -294,9 +295,13 @@ export function FileFlyProvider({ children }) {
     }
   };
 
-  // Refresh discovered peers list
+  // Refresh discovered peers list with smooth auto-turn-off feedback
   const refreshPeers = () => {
+    setIsScanning(true);
     socketService.send('REFRESH_PEERS', {});
+    setTimeout(() => {
+      setIsScanning(false);
+    }, 2500);
   };
 
   // Accept or decline incoming transfer
