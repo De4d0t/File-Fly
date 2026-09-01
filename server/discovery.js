@@ -37,10 +37,12 @@ export class PeerDiscovery {
   }
 
   start() {
+    this.isSocketBound = false;
     this.socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
 
     this.socket.on('error', (err) => {
       console.error('[Discovery] Socket error:', err.message);
+      this.isSocketBound = false;
     });
 
     this.socket.on('message', (msg, rinfo) => {
@@ -48,6 +50,7 @@ export class PeerDiscovery {
     });
 
     this.socket.on('listening', () => {
+      this.isSocketBound = true;
       try {
         this.socket.setBroadcast(true);
       } catch (e) {}
@@ -62,12 +65,16 @@ export class PeerDiscovery {
 
       // Initial fast subnet scan
       setTimeout(() => {
-        this.scanner.scanSubnet();
+        if (this.isRadarEnabled !== false) {
+          this.scanner.scanSubnet();
+        }
       }, 1500);
 
       // Periodic subnet scanner
       this.subnetScanTimer = setInterval(() => {
-        this.scanner.scanSubnet();
+        if (this.isRadarEnabled !== false) {
+          this.scanner.scanSubnet();
+        }
       }, SUBNET_SCAN_INTERVAL_MS);
     });
 
@@ -79,18 +86,22 @@ export class PeerDiscovery {
   }
 
   stop() {
+    this.isSocketBound = false;
     if (this.broadcastTimer) clearInterval(this.broadcastTimer);
     if (this.cleanupTimer) clearInterval(this.cleanupTimer);
     if (this.subnetScanTimer) clearInterval(this.subnetScanTimer);
 
     if (this.config.visible) {
-      this.announce('LEAVE');
+      try {
+        this.announce('LEAVE');
+      } catch (e) {}
     }
 
     if (this.socket) {
       try {
         this.socket.close();
       } catch (e) {}
+      this.socket = null;
     }
   }
 
@@ -145,25 +156,31 @@ export class PeerDiscovery {
   }
 
   announce(action = 'ANNOUNCE') {
-    if (!this.socket) return;
+    if (!this.socket || !this.isSocketBound) return;
 
-    const payload = JSON.stringify({
-      type: action,
-      id: this.config.id,
-      name: this.config.name,
-      ip: getPrimaryLocalIP(),
-      port: this.serverPort,
-      os: getDeviceOS(),
-      visible: Boolean(this.config.visible),
-      timestamp: Date.now(),
-    });
+    try {
+      const payload = JSON.stringify({
+        type: action,
+        id: this.config.id,
+        name: this.config.name,
+        ip: getPrimaryLocalIP(),
+        port: this.serverPort,
+        os: getDeviceOS(),
+        visible: Boolean(this.config.visible),
+        timestamp: Date.now(),
+      });
 
-    const message = Buffer.from(payload, 'utf8');
-    const targets = getBroadcastAddresses();
+      const message = Buffer.from(payload, 'utf8');
+      const targets = getBroadcastAddresses();
 
-    targets.forEach((targetIP) => {
-      this.socket.send(message, 0, message.length, DISCOVERY_PORT, targetIP, (err) => {});
-    });
+      targets.forEach((targetIP) => {
+        try {
+          if (this.socket && this.isSocketBound) {
+            this.socket.send(message, 0, message.length, DISCOVERY_PORT, targetIP, () => {});
+          }
+        } catch (err) {}
+      });
+    } catch (e) {}
   }
 
   startBroadcasting() {
