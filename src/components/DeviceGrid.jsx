@@ -32,13 +32,6 @@ export default function DeviceGrid() {
 
   return (
     <div className="w-full">
-      {/* Futuristic Laser Scan Line on Active Network Scan */}
-      {isScanning && (
-        <div className="relative w-full h-1 overflow-hidden rounded-full bg-slate-800/60 mb-6 border border-sky-500/20">
-          <div className="absolute inset-y-0 bg-gradient-to-r from-transparent via-sky-400 to-transparent w-1/3 animate-laser-scan rounded-full shadow-[0_0_12px_rgba(56,189,248,0.9)]"></div>
-        </div>
-      )}
-
       {/* Section Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
