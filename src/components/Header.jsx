@@ -138,20 +138,24 @@ export default function Header() {
             )}
           </button>
 
-          <div className="w-[1px] h-5 bg-slate-800/80 mx-0.5" />
-
-          {/* Refresh / Scan peers button */}
+          {/* Radar / Scan Button with rich spinning & glowing effects */}
           <button
             onClick={refreshPeers}
             disabled={isScanning}
-            className={`p-2.5 rounded-xl border transition-all flex items-center justify-center hover:scale-105 active:scale-95 shadow-sm ${
+            className={`p-2.5 rounded-xl border transition-all flex items-center justify-center relative hover:scale-105 active:scale-95 shadow-sm ${
               isScanning
-                ? 'bg-sky-500/20 text-sky-300 border-sky-500/40 animate-pulse'
-                : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border-slate-700/80'
+                ? 'bg-sky-500/25 border-sky-400/60 text-sky-300 shadow-lg shadow-sky-500/30 ring-2 ring-sky-400/40 glow-cyan'
+                : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border-slate-700/80 hover:border-sky-500/30'
             }`}
-            title={isScanning ? 'جاري فحص الشبكة...' : 'تحديث وفحص الأجهزة على الشبكة'}
+            title={isScanning ? 'الرادار نشط: جاري فحص الشبكة...' : 'تشغيل رادار فحص الأجهزة على الشبكة'}
           >
-            <RefreshCw className={`w-4 h-4 text-sky-400 ${isScanning ? 'animate-spin' : ''}`} />
+            {isScanning && (
+              <span className="absolute top-1 right-1 flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-80"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-400"></span>
+              </span>
+            )}
+            <Radio className={`w-4 h-4 text-sky-400 ${isScanning ? 'animate-spin drop-shadow-[0_0_8px_rgba(56,189,248,0.8)]' : ''}`} />
           </button>
 
           {/* QR Code Quick Connect for Mobile */}

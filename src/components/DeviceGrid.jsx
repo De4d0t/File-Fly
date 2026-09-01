@@ -13,7 +13,7 @@ import { useFileFly } from '../context/FileFlyContext.jsx';
 import DeviceCard from './DeviceCard.jsx';
 
 export default function DeviceGrid() {
-  const { peers, myDevice, isScanning, setIsQrModalOpen } = useFileFly();
+  const { peers, myDevice, isScanning, refreshPeers, setIsQrModalOpen } = useFileFly();
 
   // Strict multi-layer filter: Guarantee that self device NEVER shows in the grid
   const filteredPeers = (peers || []).filter((peer) => {
@@ -35,14 +35,22 @@ export default function DeviceGrid() {
       {/* Section Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          {/* Animated Radar Icon Box */}
-          <div className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${
-            isScanning 
-              ? 'bg-sky-500/20 border border-sky-400/50 shadow-lg shadow-sky-500/25 ring-2 ring-sky-500/20' 
-              : 'bg-sky-500/10 border border-sky-500/20 text-sky-400'
-          }`}>
-            <Radio className={`w-4 h-4 text-sky-400 ${isScanning ? 'animate-spin' : 'animate-pulse'}`} />
-          </div>
+          {/* Clickable Animated Radar Icon Box */}
+          <button
+            onClick={refreshPeers}
+            disabled={isScanning}
+            className={`relative w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer hover:scale-110 active:scale-95 shadow-sm ${
+              isScanning 
+                ? 'bg-sky-500/25 border border-sky-400/60 shadow-lg shadow-sky-500/30 ring-2 ring-sky-400/40 glow-cyan' 
+                : 'bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/20 hover:border-sky-500/40 text-sky-400'
+            }`}
+            title={isScanning ? 'الرادار نشط: جاري فحص الشبكة...' : 'انقر لتشغيل رادار فحص الأجهزة'}
+          >
+            {isScanning && (
+              <span className="absolute -inset-1 rounded-2xl bg-sky-400/20 animate-ping pointer-events-none"></span>
+            )}
+            <Radio className={`w-4 h-4 text-sky-400 ${isScanning ? 'animate-spin drop-shadow-[0_0_8px_rgba(56,189,248,0.8)]' : 'animate-pulse'}`} />
+          </button>
 
           <div>
             <div className="flex items-center gap-2.5">
