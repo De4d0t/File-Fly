@@ -61,15 +61,6 @@ export default function DeviceGrid() {
             </p>
           </div>
         </div>
-
-        {/* Quick QR Connect Button */}
-        <button
-          onClick={() => setIsQrModalOpen(true)}
-          className="hidden sm:flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-sky-500/10 to-brand-500/10 hover:from-sky-500/20 hover:to-brand-500/20 text-sky-300 border border-sky-500/30 text-xs font-semibold transition-all group shadow-sm"
-        >
-          <QrCode className="w-4 h-4 text-brand-400 group-hover:scale-110 transition-transform" />
-          <span>ربط هاتف أندرويد أو آيفون</span>
-        </button>
       </div>
 
       {/* Grid or Empty State */}
@@ -97,19 +88,8 @@ export default function DeviceGrid() {
             جاري البحث عن أجهزة على الشبكة المحلية...
           </h3>
           <p className="text-xs sm:text-sm text-slate-400 max-w-md mx-auto mb-6 leading-relaxed">
-            تأكد من أن جهازك الآخر (كمبيوتر، هاتف أندرويد، أو آيفون) متصل بنفس شبكة الواي فاي وأن تطبيق FileFly مفتوح لديه.
+            تأكد من أن أجهزتك الأخرى متصلة بنفس شبكة الواي فاي وأن وضع الظهور لديها مفعّل.
           </p>
-
-          {/* Action to connect phone */}
-          <div className="inline-flex flex-col sm:flex-row items-center gap-3">
-            <button
-              onClick={() => setIsQrModalOpen(true)}
-              className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-brand-600 to-emerald-500 hover:from-brand-500 hover:to-emerald-400 text-white font-semibold text-xs sm:text-sm shadow-lg shadow-brand-500/25 transition-all active:scale-95"
-            >
-              <QrCode className="w-5 h-5" />
-              <span>إظهار رمز QR لمسحه بالهاتف</span>
-            </button>
-          </div>
 
           {/* Instructions Box */}
           <div className="mt-8 pt-6 border-t border-slate-800/80 grid grid-cols-1 sm:grid-cols-3 gap-4 text-right">
