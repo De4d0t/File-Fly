@@ -22,8 +22,9 @@ const wss = new WebSocketServer({ server });
 // Load configuration
 const config = getDeviceConfig();
 
-// Connected clients registry: ws -> { id, name, os, ip, isLocalHost }
+// Connected clients registry: ws -> { id, name, visible, os, ip, isLocalHost }
 const socketClientMap = new Map();
+const pendingDisconnectTimers = new Map();
 
 /**
  * Sends event to specific targeted client IDs, or broadcasts to all if targetIds is null
@@ -80,16 +81,17 @@ wss.on('connection', (ws, req) => {
   const primaryHostIP = getPrimaryLocalIP();
   const isLocalHost = rawClientIP === '127.0.0.1' || rawClientIP === '::1' || rawClientIP === primaryHostIP || rawClientIP === 'localhost';
 
-  // Default client registration before client hello
+  // Initial client meta
   socketClientMap.set(ws, {
     id: isLocalHost ? config.id : null,
     name: isLocalHost ? config.name : 'Unknown Device',
+    visible: isLocalHost ? config.visible : true,
     os: getDeviceOS(),
     ip: rawClientIP,
     isLocalHost,
   });
 
-  // Send initial state
+  // Send initial state to newly connected client
   ws.send(
     JSON.stringify({
       type: 'INIT_STATE',
@@ -117,53 +119,83 @@ wss.on('connection', (ws, req) => {
 
       if (type === 'REGISTER_PEER') {
         const clientMeta = socketClientMap.get(ws);
+        const clientId = payload.id;
+        const clientName = payload.name || 'حاسوب / هاتف';
+        const isVisible = payload.visible !== false;
+        const clientOS = payload.os || 'windows';
+
         if (clientMeta) {
-          clientMeta.id = payload.id;
-          clientMeta.name = payload.name;
-          clientMeta.os = payload.os;
+          clientMeta.id = clientId;
+          clientMeta.name = clientName;
+          clientMeta.visible = isVisible;
+          clientMeta.os = clientOS;
         }
 
-        // Cancel any pending disconnect removal for this client
-        if (payload.id && pendingDisconnectTimers.has(payload.id)) {
-          clearTimeout(pendingDisconnectTimers.get(payload.id));
-          pendingDisconnectTimers.delete(payload.id);
+        // Cancel any pending disconnect removal
+        if (clientId && pendingDisconnectTimers.has(clientId)) {
+          clearTimeout(pendingDisconnectTimers.get(clientId));
+          pendingDisconnectTimers.delete(clientId);
         }
 
-        if (payload.id && payload.id !== config.id) {
-          discovery.addOrUpdatePeer({
-            id: payload.id,
-            name: payload.name || 'حاسوب / هاتف',
-            ip: rawClientIP,
-            port: PORT,
-            os: payload.os || 'windows',
-            visible: true,
-            isWebClient: true,
-            lastSeen: Date.now(),
-          });
+        if (clientId && clientId !== config.id) {
+          if (isVisible) {
+            discovery.addOrUpdatePeer({
+              id: clientId,
+              name: clientName,
+              ip: rawClientIP,
+              port: PORT,
+              os: clientOS,
+              visible: true,
+              isWebClient: true,
+              lastSeen: Date.now(),
+            });
+          } else {
+            discovery.removePeer(clientId);
+          }
           dispatchEvent('PEERS_UPDATE', discovery.getPeersList(), null);
         }
       } else if (type === 'SET_VISIBILITY') {
         const clientMeta = socketClientMap.get(ws);
         const targetId = payload.id || clientMeta?.id;
+        const isVisible = Boolean(payload.visible);
 
-        if (targetId && targetId !== config.id && discovery.peers.has(targetId)) {
-          const peer = discovery.peers.get(targetId);
-          peer.visible = Boolean(payload.visible);
+        if (targetId && targetId !== config.id) {
+          if (clientMeta) clientMeta.visible = isVisible;
+          if (isVisible) {
+            discovery.addOrUpdatePeer({
+              id: targetId,
+              name: clientMeta?.name || 'حاسوب / هاتف',
+              ip: rawClientIP,
+              port: PORT,
+              os: clientMeta?.os || 'windows',
+              visible: true,
+              isWebClient: true,
+              lastSeen: Date.now(),
+            });
+          } else {
+            discovery.removePeer(targetId);
+          }
           dispatchEvent('PEERS_UPDATE', discovery.getPeersList(), null);
         } else {
-          discovery.setVisibility(payload.visible);
+          discovery.setVisibility(isVisible);
           dispatchEvent('PEERS_UPDATE', discovery.getPeersList(), null);
         }
       } else if (type === 'SET_NAME') {
         const clientMeta = socketClientMap.get(ws);
         const targetId = payload.id || clientMeta?.id;
+        const newName = (payload.name || '').trim();
 
-        if (targetId && targetId !== config.id && discovery.peers.has(targetId)) {
-          const peer = discovery.peers.get(targetId);
-          peer.name = payload.name;
+        if (!newName) return;
+
+        if (targetId && targetId !== config.id) {
+          if (clientMeta) clientMeta.name = newName;
+          if (discovery.peers.has(targetId)) {
+            const peer = discovery.peers.get(targetId);
+            peer.name = newName;
+          }
           dispatchEvent('PEERS_UPDATE', discovery.getPeersList(), null);
         } else {
-          discovery.setName(payload.name);
+          discovery.setName(newName);
           dispatchEvent('PEERS_UPDATE', discovery.getPeersList(), null);
         }
       } else if (type === 'REFRESH_PEERS' || type === 'SCAN_SUBNET') {
@@ -188,23 +220,17 @@ wss.on('connection', (ws, req) => {
     socketClientMap.delete(ws);
 
     if (clientMeta?.id && clientMeta.id !== config.id) {
-      // Check if this client still has other open connections
       const hasOtherSockets = Array.from(socketClientMap.values()).some((c) => c.id === clientMeta.id);
       if (!hasOtherSockets) {
-        // Wait 4 seconds before removing to prevent UI flickering on page refresh (F5)
         const timer = setTimeout(() => {
           pendingDisconnectTimers.delete(clientMeta.id);
-          discovery.peers.delete(clientMeta.id);
-          dispatchEvent('PEERS_UPDATE', discovery.getPeersList(), null);
+          discovery.removePeer(clientMeta.id);
         }, 4000);
         pendingDisconnectTimers.set(clientMeta.id, timer);
       }
     }
   });
 });
-
-// Disconnect grace timers to prevent UI flicker when a user refreshes (F5)
-const pendingDisconnectTimers = new Map();
 
 // Start Server
 server.listen(PORT, '0.0.0.0', () => {

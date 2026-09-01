@@ -1,47 +1,45 @@
 import dgram from 'dgram';
-import { getPrimaryLocalIP, getDeviceOS, getBroadcastAddresses } from './networkUtils.js';
+import { getPrimaryLocalIP, getDeviceOS, getBroadcastAddresses, saveDeviceConfig } from './networkUtils.js';
 import { SubnetScanner } from './subnetScanner.js';
 
 const DISCOVERY_PORT = 53317;
 const BROADCAST_INTERVAL_MS = 2500;
 const PEER_TIMEOUT_MS = 25000;
-const SUBNET_SCAN_INTERVAL_MS = 30000; // Auto-scan whole subnet every 30s
+const SUBNET_SCAN_INTERVAL_MS = 30000;
 
 export class PeerDiscovery {
-  constructor(config, serverPort = 53316, onPeersChange = () => {}, onScanStatus = () => {}) {
+  constructor(config, serverPort, onPeersUpdated = () => {}, onScanStatus = () => {}) {
     this.config = config;
     this.serverPort = serverPort;
-    this.onPeersChange = onPeersChange;
+    this.onPeersUpdated = onPeersUpdated;
     this.onScanStatus = onScanStatus;
-    this.peers = new Map(); // id -> peer data
+
+    this.peers = new Map(); // id -> peer object
     this.socket = null;
     this.broadcastTimer = null;
     this.cleanupTimer = null;
-    this.subnetTimer = null;
-    this.isRunning = false;
+    this.subnetScanTimer = null;
 
-    // Subnet Scanner for 100% reliable discovery across all routers
+    // Subnet Scanner for reliable LAN auto-discovery
     this.scanner = new SubnetScanner(
-      this.config.id,
-      this.serverPort,
-      (peer) => this.addOrUpdatePeer(peer),
-      (status) => this.onScanStatus(status)
+      config.id,
+      serverPort,
+      (discoveredPeer) => {
+        this.addOrUpdatePeer(discoveredPeer);
+      },
+      (isScanning) => {
+        if (typeof this.onScanStatus === 'function') {
+          this.onScanStatus({ scanning: isScanning });
+        }
+      }
     );
   }
 
-  /**
-   * Initializes UDP socket and starts listening & announcing
-   */
   start() {
-    if (this.isRunning) return;
-
     this.socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
 
     this.socket.on('error', (err) => {
       console.error('[Discovery] Socket error:', err.message);
-      try {
-        this.socket.close();
-      } catch (e) {}
     });
 
     this.socket.on('message', (msg, rinfo) => {
@@ -51,111 +49,96 @@ export class PeerDiscovery {
     this.socket.on('listening', () => {
       try {
         this.socket.setBroadcast(true);
-        console.log(`[Discovery] UDP listener running on port ${DISCOVERY_PORT}`);
-      } catch (e) {
-        console.error('[Discovery] Error enabling broadcast:', e.message);
-      }
+      } catch (e) {}
+
+      console.log(`[Discovery] UDP listener running on port ${DISCOVERY_PORT}`);
+
+      // Start periodic UDP broadcasting
+      this.startBroadcasting();
+
+      // Start peer cleanup timer
+      this.startCleanupTimer();
+
+      // Initial fast subnet scan
+      setTimeout(() => {
+        this.scanner.scanSubnet();
+      }, 1500);
+
+      // Periodic subnet scanner
+      this.subnetScanTimer = setInterval(() => {
+        this.scanner.scanSubnet();
+      }, SUBNET_SCAN_INTERVAL_MS);
     });
 
     try {
-      this.socket.bind(DISCOVERY_PORT, '0.0.0.0', () => {
-        this.isRunning = true;
-        this.startBroadcasting();
-        this.startCleanupTimer();
-
-        // Initial fast subnet sweep after 1.5s
-        setTimeout(() => {
-          if (this.isRunning) this.scanner.scanSubnet();
-        }, 1500);
-
-        // Recurring subnet sweep
-        this.subnetTimer = setInterval(() => {
-          if (this.isRunning) this.scanner.scanSubnet();
-        }, SUBNET_SCAN_INTERVAL_MS);
-      });
+      this.socket.bind(DISCOVERY_PORT);
     } catch (e) {
-      console.error('[Discovery] Failed to bind port:', e);
+      console.error('[Discovery] Failed to bind socket:', e.message);
     }
   }
 
-  /**
-   * Processes discovery UDP packets
-   */
+  stop() {
+    if (this.broadcastTimer) clearInterval(this.broadcastTimer);
+    if (this.cleanupTimer) clearInterval(this.cleanupTimer);
+    if (this.subnetScanTimer) clearInterval(this.subnetScanTimer);
+
+    if (this.config.visible) {
+      this.announce('LEAVE');
+    }
+
+    if (this.socket) {
+      try {
+        this.socket.close();
+      } catch (e) {}
+    }
+  }
+
   handleIncomingMessage(msgBuffer, rinfo) {
     try {
-      const payload = JSON.parse(msgBuffer.toString('utf8'));
-      if (!payload || payload.protocol !== 'FILEFLY_V1') return;
+      const data = JSON.parse(msgBuffer.toString('utf8'));
 
       // Ignore our own broadcast packets
-      if (payload.id === this.config.id) return;
+      if (!data || data.id === this.config.id) return;
 
-      // If peer is leaving or went invisible, remove from peer list
-      if (payload.action === 'LEAVING' || payload.visible === false) {
-        if (this.peers.has(payload.id)) {
-          this.peers.delete(payload.id);
-          this.notifyPeersChanged();
+      if (data.type === 'ANNOUNCE') {
+        if (data.visible !== false) {
+          this.addOrUpdatePeer({
+            id: data.id,
+            name: data.name || 'جهاز غير معروف',
+            ip: rinfo.address || data.ip,
+            port: data.port || this.serverPort,
+            os: data.os || 'unknown',
+            visible: true,
+            lastSeen: Date.now(),
+          });
+        } else {
+          this.removePeer(data.id);
         }
-        return;
+      } else if (data.type === 'LEAVE') {
+        this.removePeer(data.id);
       }
-
-      // If peer is announcing presence
-      if (payload.action === 'ANNOUNCE') {
-        const peerData = {
-          id: payload.id,
-          name: payload.name || 'Unknown Device',
-          ip: payload.ip || rinfo.address,
-          port: payload.port || 53316,
-          os: payload.os || 'unknown',
-          visible: payload.visible,
-          lastSeen: Date.now(),
-        };
-
-        const existing = this.peers.get(payload.id);
-        const isNew = !existing;
-        const hasChanged = existing && (existing.name !== peerData.name || existing.ip !== peerData.ip);
-
-        this.peers.set(payload.id, peerData);
-
-        if (isNew || hasChanged) {
-          this.notifyPeersChanged();
-        }
-      }
-    } catch (err) {
-      // Ignore malformed packets
-    }
+    } catch (e) {}
   }
 
-  /**
-   * Sends a UDP broadcast announcement
-   */
   announce(action = 'ANNOUNCE') {
-    if (!this.socket || !this.isRunning) return;
-
-    // If invisible and not leaving, do not announce
-    if (!this.config.visible && action !== 'LEAVING') return;
+    if (!this.socket) return;
 
     const payload = JSON.stringify({
-      protocol: 'FILEFLY_V1',
-      action: action,
+      type: action,
       id: this.config.id,
       name: this.config.name,
       ip: getPrimaryLocalIP(),
       port: this.serverPort,
       os: getDeviceOS(),
-      visible: this.config.visible,
+      visible: Boolean(this.config.visible),
       timestamp: Date.now(),
     });
 
     const message = Buffer.from(payload, 'utf8');
     const targets = getBroadcastAddresses();
 
-    // Broadcast to all active subnet interfaces & 255.255.255.255
     targets.forEach((targetIP) => {
-      this.socket.send(message, 0, message.length, DISCOVERY_PORT, targetIP, (err) => {
-        if (err && err.code !== 'ENETUNREACH') {
-          // Silent catch
-        }
-      });
+      this.socket.send(message, 0, message.length, DISCOVERY_PORT, targetIP, (err) => {});
     });
   }
 
@@ -189,53 +172,52 @@ export class PeerDiscovery {
     }, 4000);
   }
 
-  /**
-   * Updates device visibility and announces changes
-   */
-  setVisibility(isVisible) {
-    const wasVisible = this.config.visible;
-    this.config.visible = Boolean(isVisible);
-
-    if (wasVisible && !this.config.visible) {
-      // Send leaving packet so other peers immediately hide us
-      this.announce('LEAVING');
-    } else if (!wasVisible && this.config.visible) {
-      // Immediately announce our reappearance
-      this.announce('ANNOUNCE');
-    }
-  }
-
-  /**
-   * Updates device name
-   */
-  setName(newName) {
-    if (!newName || !newName.trim()) return;
-    this.config.name = newName.trim();
-    if (this.config.visible) {
-      this.announce('ANNOUNCE');
-    }
-  }
-
-  /**
-   * Add a peer manually (e.g., when scanned via QR code or HTTP handshake)
-   */
   addOrUpdatePeer(peer) {
     if (!peer || !peer.id || peer.id === this.config.id) return;
-    peer.lastSeen = Date.now();
-    this.peers.set(peer.id, peer);
-    this.notifyPeersChanged();
+
+    if (peer.visible === false) {
+      if (this.peers.has(peer.id)) {
+        this.peers.delete(peer.id);
+        this.notifyPeersChanged();
+      }
+      return;
+    }
+
+    const existing = this.peers.get(peer.id);
+    const hasChanged = !existing || existing.name !== peer.name || existing.ip !== peer.ip;
+
+    this.peers.set(peer.id, {
+      ...existing,
+      ...peer,
+      visible: true,
+      lastSeen: Date.now(),
+    });
+
+    if (hasChanged) {
+      this.notifyPeersChanged();
+    }
+  }
+
+  removePeer(peerId) {
+    if (this.peers.has(peerId)) {
+      this.peers.delete(peerId);
+      this.notifyPeersChanged();
+    }
   }
 
   getPeersList() {
-    const list = Array.from(this.peers.values()).map((p) => ({
-      id: p.id,
-      name: p.name,
-      ip: p.ip,
-      port: p.port,
-      os: p.os,
-      visible: p.visible !== undefined ? p.visible : true,
-      lastSeen: p.lastSeen,
-    }));
+    // Only return peers that are actively visible
+    const list = Array.from(this.peers.values())
+      .filter((p) => p.visible !== false)
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        ip: p.ip,
+        port: p.port,
+        os: p.os,
+        visible: true,
+        lastSeen: p.lastSeen,
+      }));
 
     // If host is visible, include host in the network directory
     if (this.config.visible) {
@@ -254,24 +236,30 @@ export class PeerDiscovery {
     return list;
   }
 
-  notifyPeersChanged() {
-    if (typeof this.onPeersChange === 'function') {
-      this.onPeersChange(this.getPeersList());
+  setVisibility(isVisible) {
+    this.config.visible = Boolean(isVisible);
+    saveDeviceConfig(this.config);
+
+    if (this.config.visible) {
+      this.announce('ANNOUNCE');
+    } else {
+      this.announce('LEAVE');
     }
+
+    this.notifyPeersChanged();
   }
 
-  stop() {
-    this.isRunning = false;
-    if (this.config.visible) {
-      this.announce('LEAVING');
-    }
-    if (this.broadcastTimer) clearInterval(this.broadcastTimer);
-    if (this.cleanupTimer) clearInterval(this.cleanupTimer);
-    if (this.subnetTimer) clearInterval(this.subnetTimer);
-    if (this.socket) {
-      try {
-        this.socket.close();
-      } catch (e) {}
+  setName(name) {
+    if (!name || !name.trim()) return;
+    this.config.name = name.trim();
+    saveDeviceConfig(this.config);
+    this.announce('ANNOUNCE');
+    this.notifyPeersChanged();
+  }
+
+  notifyPeersChanged() {
+    if (typeof this.onPeersUpdated === 'function') {
+      this.onPeersUpdated(this.getPeersList());
     }
   }
 }

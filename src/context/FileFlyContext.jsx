@@ -7,33 +7,6 @@ import { generateUUID } from '../utils/formatters.js';
 const FileFlyContext = createContext(null);
 
 export function FileFlyProvider({ children }) {
-  // Device identity
-  const [myDevice, setMyDevice] = useState({
-    id: 'local-dev',
-    name: 'جهازي',
-    visible: true,
-    os: 'windows',
-    ip: '127.0.0.1',
-    port: 53316,
-  });
-
-  const [isOnline, setIsOnline] = useState(false);
-  const [peers, setPeers] = useState([]);
-  const [history, setHistory] = useState([]);
-  const [isScanning, setIsScanning] = useState(false);
-  const [pendingIncomingRequest, setPendingIncomingRequest] = useState(null);
-  
-  // Active transfer state for progress bars
-  const [activeTransfer, setActiveTransfer] = useState(null);
-
-  // Modals state
-  const [isQrModalOpen, setIsQrModalOpen] = useState(false);
-  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
-  const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
-
-  // Active XHR upload controller reference
-  const uploadControllerRef = useRef(null);
-
   const isHostMachine = typeof window !== 'undefined' && (
     Boolean(window.fileflyDesktop) ||
     window.location.hostname === 'localhost' ||
@@ -59,6 +32,50 @@ export function FileFlyProvider({ children }) {
     return 'جهاز متصل';
   };
 
+  // Helper to load client settings safely from localStorage
+  const getInitialClientIdentity = () => {
+    if (typeof window === 'undefined') {
+      return { id: 'temp-id', name: 'جهازي', visible: true };
+    }
+    const id = localStorage.getItem('filefly_device_id') || generateUUID();
+    localStorage.setItem('filefly_device_id', id);
+
+    const name = localStorage.getItem('filefly_device_name') || getClientDefaultName();
+    const visible = localStorage.getItem('filefly_device_visible') !== 'false';
+
+    return { id, name, visible };
+  };
+
+  const initialIdentity = getInitialClientIdentity();
+
+  // Device identity
+  const [myDevice, setMyDevice] = useState({
+    id: initialIdentity.id,
+    name: initialIdentity.name,
+    visible: initialIdentity.visible,
+    os: getClientOS(),
+    ip: typeof window !== 'undefined' ? window.location.hostname : '127.0.0.1',
+    port: 53316,
+    isHost: isHostMachine,
+  });
+
+  const [isOnline, setIsOnline] = useState(false);
+  const [peers, setPeers] = useState([]);
+  const [history, setHistory] = useState([]);
+  const [isScanning, setIsScanning] = useState(false);
+  const [pendingIncomingRequest, setPendingIncomingRequest] = useState(null);
+  
+  // Active transfer state for progress bars
+  const [activeTransfer, setActiveTransfer] = useState(null);
+
+  // Modals state
+  const [isQrModalOpen, setIsQrModalOpen] = useState(false);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
+
+  // Active XHR upload controller reference
+  const uploadControllerRef = useRef(null);
+
   const hostDeviceRef = useRef(null);
   const myDeviceRef = useRef(myDevice);
 
@@ -73,12 +90,11 @@ export function FileFlyProvider({ children }) {
     const unsubConnection = socketService.on('connection_change', (connected) => {
       setIsOnline(connected);
       if (connected && !isHostMachine) {
-        const clientId = localStorage.getItem('filefly_client_id') || generateUUID();
-        localStorage.setItem('filefly_client_id', clientId);
-        const clientName = localStorage.getItem('filefly_device_name') || getClientDefaultName();
+        const clientIdentity = getInitialClientIdentity();
         socketService.send('REGISTER_PEER', {
-          id: clientId,
-          name: clientName,
+          id: clientIdentity.id,
+          name: clientIdentity.name,
+          visible: clientIdentity.visible,
           os: getClientOS(),
         });
       }
@@ -104,16 +120,14 @@ export function FileFlyProvider({ children }) {
         }
       } else {
         // Remote client (Laptop 2 or Phone)
-        const clientId = localStorage.getItem('filefly_client_id') || generateUUID();
-        localStorage.setItem('filefly_client_id', clientId);
-        const clientName = localStorage.getItem('filefly_device_name') || getClientDefaultName();
+        const clientIdentity = getInitialClientIdentity();
         const clientOS = getClientOS();
 
         const clientDevice = {
-          id: clientId,
-          name: clientName,
+          id: clientIdentity.id,
+          name: clientIdentity.name,
           os: clientOS,
-          visible: true,
+          visible: clientIdentity.visible,
           isClient: true,
           ip: data.clientIP || window.location.hostname,
         };
@@ -122,13 +136,14 @@ export function FileFlyProvider({ children }) {
 
         // Announce our presence to the host
         socketService.send('REGISTER_PEER', {
-          id: clientId,
-          name: clientName,
+          id: clientIdentity.id,
+          name: clientIdentity.name,
+          visible: clientIdentity.visible,
           os: clientOS,
         });
 
-        // Set peers: Show host + other peers, filter out self
-        const allFiltered = (data.peers || []).filter((p) => p.id !== clientId);
+        // Set peers: filter out self
+        const allFiltered = (data.peers || []).filter((p) => p.id !== clientIdentity.id);
         setPeers(allFiltered);
       }
 
@@ -139,7 +154,7 @@ export function FileFlyProvider({ children }) {
 
     const unsubPeers = socketService.on('PEERS_UPDATE', (peersList) => {
       const currentMyDevice = myDeviceRef.current;
-      const savedClientId = typeof window !== 'undefined' ? localStorage.getItem('filefly_client_id') : null;
+      const savedClientId = typeof window !== 'undefined' ? localStorage.getItem('filefly_device_id') : null;
       const host = hostDeviceRef.current;
 
       const filtered = (peersList || []).filter((p) => {
@@ -244,6 +259,7 @@ export function FileFlyProvider({ children }) {
   const toggleVisibility = async () => {
     const nextState = !myDevice.visible;
     setMyDevice((prev) => ({ ...prev, visible: nextState }));
+    localStorage.setItem('filefly_device_visible', String(nextState));
 
     socketService.send('SET_VISIBILITY', { id: myDevice.id, visible: nextState });
 
@@ -345,34 +361,45 @@ export function FileFlyProvider({ children }) {
       transferState.id = transferId;
       setActiveTransfer({ ...transferState });
 
-      // Step 2: Poll / wait for receiver's response
-      let isApproved = false;
-      let attempts = 0;
+      // Step 2: Poll for recipient response
+      let approved = false;
+      let checkAttempts = 0;
+      const maxAttempts = 60; // 60 seconds timeout
 
-      while (!isApproved && attempts < 45) { // 45 seconds timeout
-        await new Promise((res) => setTimeout(res, 1000));
-        attempts++;
+      while (!approved && checkAttempts < maxAttempts) {
+        await new Promise((r) => setTimeout(r, 1000));
+        checkAttempts++;
 
-        const statusData = await checkTransferApproval(targetBaseUrl, transferId);
-        if (statusData.status === 'accepted') {
-          isApproved = true;
+        const statusResponse = await checkTransferApproval(targetBaseUrl, transferId);
+        
+        if (statusResponse.status === 'accepted') {
+          approved = true;
           break;
-        } else if (statusData.status === 'declined' || statusData.status === 'cancelled') {
+        }
+
+        if (statusResponse.status === 'declined' || statusResponse.status === 'cancelled') {
           playDeclinedSound();
-          setActiveTransfer(null);
-          alert(`تم رفض الطلب من قِبل ${peer.name}`);
+          setActiveTransfer({
+            ...transferState,
+            status: 'declined',
+          });
+          setTimeout(() => setActiveTransfer(null), 3000);
           return;
         }
       }
 
-      if (!isApproved) {
-        setActiveTransfer(null);
-        alert(`انتهت مهلة انتظار الموافقة من ${peer.name}`);
+      if (!approved) {
+        setActiveTransfer({
+          ...transferState,
+          status: 'timeout',
+        });
+        setTimeout(() => setActiveTransfer(null), 3000);
         return;
       }
 
-      // Step 3: Stream file upload
-      setActiveTransfer((prev) => ({ ...prev, status: 'transferring' }));
+      // Step 3: Start uploading
+      transferState.status = 'transferring';
+      setActiveTransfer({ ...transferState });
 
       uploadControllerRef.current = uploadFilesToPeer(
         targetBaseUrl,
@@ -380,59 +407,65 @@ export function FileFlyProvider({ children }) {
         files,
         (progress) => {
           setActiveTransfer((prev) => {
-            if (!prev) return null;
+            if (!prev) return prev;
             return {
               ...prev,
-              bytesTransferred: progress.loaded,
-              totalBytes: progress.total,
-              percentage: progress.percentage,
-              speedBps: progress.speedBps || prev.speedBps,
+              ...progress,
+              status: 'transferring',
             };
           });
         },
         () => {
           playSuccessSound();
-          setActiveTransfer((prev) => ({
-            ...prev,
-            status: 'completed',
-            percentage: 100,
-          }));
+          setActiveTransfer((prev) => {
+            if (!prev) return null;
+            return { ...prev, status: 'completed', percentage: 100 };
+          });
 
-          setTimeout(() => {
-            setActiveTransfer(null);
-          }, 3500);
+          // Add to local history
+          setHistory((prev) => [
+            {
+              id: transferId,
+              direction: 'outgoing',
+              partnerName: peer.name,
+              filesCount: files.length,
+              firstFileName: files[0]?.name || 'ملفات',
+              totalBytes,
+              completedAt: Date.now(),
+            },
+            ...prev,
+          ]);
+
+          setTimeout(() => setActiveTransfer(null), 4000);
         },
-        (error) => {
+        (err) => {
           playDeclinedSound();
-          alert(`خطأ أثناء النقل: ${error.message}`);
-          setActiveTransfer(null);
+          console.error('Upload failed:', err);
+          setActiveTransfer((prev) => {
+            if (!prev) return null;
+            return { ...prev, status: 'error', errorMessage: err.message };
+          });
+          setTimeout(() => setActiveTransfer(null), 4000);
         }
       );
     } catch (err) {
       playDeclinedSound();
-      alert(`تعذر بدء النقل: ${err.message}`);
-      setActiveTransfer(null);
+      console.error('Transfer initiation failed:', err);
+      setActiveTransfer({
+        ...transferState,
+        status: 'error',
+        errorMessage: err.message,
+      });
+      setTimeout(() => setActiveTransfer(null), 4000);
     }
   };
 
-  // Cancel active transfer
+  // Cancel outgoing transfer
   const cancelActiveTransfer = () => {
     if (uploadControllerRef.current) {
       uploadControllerRef.current.abort();
-      uploadControllerRef.current = null;
     }
     setActiveTransfer(null);
-  };
-
-  // Open downloads folder on PC
-  const openDownloadsFolder = async () => {
-    if (window.fileflyDesktop?.openDownloadsFolder) {
-      window.fileflyDesktop.openDownloadsFolder();
-    } else {
-      try {
-        await fetch('/api/open-downloads', { method: 'POST' });
-      } catch (e) {}
-    }
   };
 
   return (
@@ -446,10 +479,10 @@ export function FileFlyProvider({ children }) {
         activeTransfer,
         pendingIncomingRequest,
         isQrModalOpen,
-        setIsQrModalOpen,
         isHistoryModalOpen,
-        setIsHistoryModalOpen,
         isRenameModalOpen,
+        setIsQrModalOpen,
+        setIsHistoryModalOpen,
         setIsRenameModalOpen,
         toggleVisibility,
         updateDeviceName,
@@ -457,7 +490,6 @@ export function FileFlyProvider({ children }) {
         respondToIncomingRequest,
         sendFilesToDevice,
         cancelActiveTransfer,
-        openDownloadsFolder,
       }}
     >
       {children}
