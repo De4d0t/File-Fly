@@ -118,14 +118,16 @@ export class TransferEngine {
       transfer.lastSpeedTime = Date.now();
 
       // Notify sender that recipient accepted
-      this.notifyUI('TRANSFER_ACCEPTED', transfer, [transfer.sender.id, transfer.recipient.id]);
+      this.notifyUI('TRANSFER_ACCEPTED', transfer, [transfer.sender.id, transfer.recipient.id, this.config.id, 'host']);
       return { success: true, status: 'accepted', transferId };
     } else {
       transfer.status = 'declined';
 
       // Notify sender that recipient declined
-      this.notifyUI('TRANSFER_DECLINED', transfer, [transfer.sender.id]);
-      this.activeTransfers.delete(transferId);
+      this.notifyUI('TRANSFER_DECLINED', transfer, [transfer.sender.id, this.config.id, 'host']);
+      setTimeout(() => {
+        this.activeTransfers.delete(transferId);
+      }, 15000);
       return { success: true, status: 'declined', transferId };
     }
   }

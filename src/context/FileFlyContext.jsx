@@ -251,6 +251,30 @@ export function FileFlyProvider({ children }) {
       }, 4000);
     });
 
+    // Transfer declined by recipient
+    const unsubDeclined = socketService.on('TRANSFER_DECLINED', (transfer) => {
+      playDeclinedSound();
+      setActiveTransfer((prev) => {
+        if (!prev || (transfer?.id && prev.id && prev.id !== transfer.id)) return prev;
+        return {
+          ...prev,
+          status: 'declined',
+          partnerName: transfer.recipient?.name || prev.partnerName,
+        };
+      });
+
+      if (window.fileflyDesktop?.showNotification) {
+        window.fileflyDesktop.showNotification(
+          'تم رفض طلب النقل - FileFly',
+          `قام ${transfer.recipient?.name || 'المستلم'} برفض طلب نقل الملف.`
+        );
+      }
+
+      setTimeout(() => {
+        setActiveTransfer((curr) => (curr?.status === 'declined' ? null : curr));
+      }, 4000);
+    });
+
     // Transfer cancelled
     const unsubCancelled = socketService.on('TRANSFER_CANCELLED', () => {
       playDeclinedSound();
@@ -268,6 +292,7 @@ export function FileFlyProvider({ children }) {
       unsubRequest();
       unsubProgress();
       unsubCompleted();
+      unsubDeclined();
       unsubCancelled();
     };
   }, [isHostMachine]);
@@ -331,27 +356,44 @@ export function FileFlyProvider({ children }) {
   // Accept or decline incoming transfer
   const respondToIncomingRequest = async (decision) => {
     if (!pendingIncomingRequest) return;
-    const transferId = pendingIncomingRequest.id;
+    const request = pendingIncomingRequest;
+    const transferId = request.id;
 
     if (decision === 'accept') {
       setActiveTransfer({
         id: transferId,
         direction: 'incoming',
-        partnerName: pendingIncomingRequest.sender.name,
-        filesCount: pendingIncomingRequest.files.length,
-        firstFileName: pendingIncomingRequest.files[0]?.name || 'ملفات',
-        totalBytes: pendingIncomingRequest.totalBytes,
+        partnerName: request.sender.name,
+        filesCount: request.files.length,
+        firstFileName: request.files[0]?.name || 'ملفات',
+        totalBytes: request.totalBytes,
         bytesTransferred: 0,
         percentage: 0,
         speedBps: 0,
         status: 'transferring',
       });
     } else {
+      playDeclinedSound();
       socketService.send('TRANSFER_DECISION', {
         transferId: transferId,
         decision: 'decline',
+        responderId: myDevice.id,
       });
-      setPendingIncomingRequest(null);
+
+      // Show temporary declined status toast on recipient screen
+      setActiveTransfer({
+        id: transferId,
+        direction: 'incoming',
+        partnerName: request.sender.name,
+        filesCount: request.files.length,
+        firstFileName: request.files[0]?.name || 'ملفات',
+        status: 'declined',
+        isReceiverDeclined: true,
+      });
+
+      setTimeout(() => {
+        setActiveTransfer((curr) => (curr?.isReceiverDeclined ? null : curr));
+      }, 3500);
     }
 
     setPendingIncomingRequest(null);

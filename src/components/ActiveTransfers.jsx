@@ -6,6 +6,7 @@ import {
   Clock, 
   CheckCircle2, 
   XCircle, 
+  AlertTriangle,
   Loader2,
   FolderOpen
 } from 'lucide-react';
@@ -20,25 +21,47 @@ export default function ActiveTransfers() {
   const isIncoming = activeTransfer.direction === 'incoming';
   const isWaitingApproval = activeTransfer.status === 'waiting_approval';
   const isCompleted = activeTransfer.status === 'completed';
+  const isDeclined = activeTransfer.status === 'declined';
+  const isTimeout = activeTransfer.status === 'timeout';
+  const isError = activeTransfer.status === 'error';
+
   const remainingBytes = Math.max(0, (activeTransfer.totalBytes || 0) - (activeTransfer.bytesTransferred || 0));
   const eta = calculateETA(remainingBytes, activeTransfer.speedBps);
 
   return (
     <div className="fixed bottom-6 left-6 right-6 sm:left-auto sm:right-6 sm:w-96 z-40 animate-in slide-in-from-bottom-6 duration-300">
-      <div className="rounded-3xl glass-panel p-5 border border-sky-500/40 shadow-2xl shadow-sky-500/20 glow-cyan">
+      <div 
+        className={`rounded-3xl glass-panel p-5 border shadow-2xl transition-all duration-300 ${
+          isDeclined || isError
+            ? 'border-red-500/50 shadow-red-500/20 bg-slate-950/95 glow-red'
+            : isTimeout
+            ? 'border-amber-500/50 shadow-amber-500/20 bg-slate-950/95'
+            : isCompleted
+            ? 'border-emerald-500/50 shadow-emerald-500/20 glow-green'
+            : 'border-sky-500/40 shadow-sky-500/20 glow-cyan'
+        }`}
+      >
         {/* Card Header */}
         <div className="flex items-start justify-between gap-3 mb-3">
           <div className="flex items-center gap-3">
             <div
               className={`w-10 h-10 rounded-2xl flex items-center justify-center text-white shadow-md ${
-                isCompleted
-                  ? 'bg-emerald-600'
+                isDeclined || isError
+                  ? 'bg-red-500/20 border border-red-500/40 text-red-400'
+                  : isTimeout
+                  ? 'bg-amber-500/20 border border-amber-500/40 text-amber-400'
+                  : isCompleted
+                  ? 'bg-emerald-600 text-white'
                   : isIncoming
                   ? 'bg-gradient-to-tr from-sky-600 to-indigo-500'
                   : 'bg-gradient-to-tr from-brand-600 to-emerald-500'
               }`}
             >
-              {isCompleted ? (
+              {isDeclined || isError ? (
+                <XCircle className="w-5 h-5 text-red-400 animate-pulse" />
+              ) : isTimeout ? (
+                <AlertTriangle className="w-5 h-5 text-amber-400" />
+              ) : isCompleted ? (
                 <CheckCircle2 className="w-5 h-5 text-white" />
               ) : isIncoming ? (
                 <ArrowDownLeft className="w-5 h-5 animate-pulse" />
@@ -49,7 +72,15 @@ export default function ActiveTransfers() {
 
             <div>
               <div className="text-xs font-bold text-white flex items-center gap-1.5">
-                {isCompleted
+                {isDeclined
+                  ? activeTransfer.isReceiverDeclined
+                    ? 'تم رفض استلام الملف ❌'
+                    : 'تم رفض الطلب من قبل المستلم ❌'
+                  : isTimeout
+                  ? 'انتهت مهلة الانتظار ⚠️'
+                  : isError
+                  ? 'تعذر إتمام النقل ❌'
+                  : isCompleted
                   ? 'اكتمل النقل بنجاح! 🎉'
                   : isWaitingApproval
                   ? 'في انتظار موافقة المستلم...'
@@ -65,17 +96,35 @@ export default function ActiveTransfers() {
             </div>
           </div>
 
-          {/* Cancel button */}
-          {!isCompleted && (
-            <button
-              onClick={cancelActiveTransfer}
-              className="p-1 text-slate-400 hover:text-red-400 rounded-lg transition-colors"
-              title="إلغاء النقل"
-            >
-              <XCircle className="w-5 h-5" />
-            </button>
-          )}
+          {/* Dismiss / Cancel button */}
+          <button
+            onClick={cancelActiveTransfer}
+            className="p-1 text-slate-400 hover:text-red-400 rounded-lg transition-colors"
+            title="إغلاق"
+          >
+            <XCircle className="w-5 h-5" />
+          </button>
         </div>
+
+        {/* Status: Declined Banner */}
+        {isDeclined && (
+          <div className="flex items-center gap-2 py-3 px-3.5 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-medium animate-in fade-in duration-200">
+            <XCircle className="w-4 h-4 shrink-0" />
+            <span>
+              {activeTransfer.isReceiverDeclined
+                ? 'لقد قمت برفض استقبال هذا الملف.'
+                : `قام ${activeTransfer.partnerName || 'المستلم'} برفض طلب نقل الملف.`}
+            </span>
+          </div>
+        )}
+
+        {/* Status: Timeout Banner */}
+        {isTimeout && (
+          <div className="flex items-center gap-2 py-3 px-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-medium">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span>لم تتم الاستجابة لطلب النقل في الوقت المحدد.</span>
+          </div>
+        )}
 
         {/* Status: Waiting for approval indicator */}
         {isWaitingApproval && (
@@ -86,7 +135,7 @@ export default function ActiveTransfers() {
         )}
 
         {/* Status: Transferring or Completed Progress */}
-        {!isWaitingApproval && (
+        {!isWaitingApproval && !isDeclined && !isTimeout && !isError && (
           <>
             {/* Progress Bar */}
             <div className="relative w-full h-3 bg-slate-800 rounded-full overflow-hidden mb-3">
