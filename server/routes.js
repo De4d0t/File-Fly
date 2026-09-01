@@ -258,17 +258,26 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
    */
   router.post('/open-downloads', (req, res) => {
     const dir = config.downloadsDir;
-    const osType = getDeviceOS();
+    try {
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
 
-    if (osType === 'windows') {
-      exec(`explorer "${dir}"`);
-    } else if (osType === 'mac') {
-      exec(`open "${dir}"`);
-    } else if (osType === 'linux') {
-      exec(`xdg-open "${dir}"`);
+      const osType = getDeviceOS();
+      if (osType === 'windows') {
+        const winPath = path.resolve(dir).replace(/\//g, '\\');
+        exec(`explorer.exe "${winPath}"`);
+      } else if (osType === 'mac') {
+        exec(`open "${dir}"`);
+      } else if (osType === 'linux') {
+        exec(`xdg-open "${dir}"`);
+      }
+
+      res.json({ success: true, path: dir });
+    } catch (err) {
+      console.error('[OpenDownloads Error]:', err);
+      res.status(500).json({ error: err.message });
     }
-
-    res.json({ success: true, path: dir });
   });
 
   /**

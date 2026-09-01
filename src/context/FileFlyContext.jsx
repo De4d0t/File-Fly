@@ -502,6 +502,15 @@ export function FileFlyProvider({ children }) {
     setActiveTransfer(null);
   };
 
+  // Open Downloads Folder in Explorer
+  const openDownloadsFolder = async () => {
+    try {
+      await fetch('/api/open-downloads', { method: 'POST' });
+    } catch (e) {
+      console.error('Failed to open downloads folder:', e);
+    }
+  };
+
   return (
     <FileFlyContext.Provider
       value={{
@@ -523,6 +532,7 @@ export function FileFlyProvider({ children }) {
         toggleVisibility,
         updateDeviceName,
         refreshPeers,
+        openDownloadsFolder,
         respondToIncomingRequest,
         sendFilesToDevice,
         cancelActiveTransfer,
