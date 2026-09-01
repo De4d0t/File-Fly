@@ -134,10 +134,15 @@ export default function DeviceCard({ peer }) {
           </div>
         </div>
 
-        {/* Live Signal Indicator */}
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[11px] font-medium">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-          <span>متصل</span>
+        {/* Live Signal Indicator (Polished Emerald Pulse Beacon) */}
+        <div 
+          className="relative flex items-center justify-center p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 shadow-sm"
+          title="الجهاز متصل وجاهز لنقل الملفات"
+        >
+          <span className="relative flex h-2.5 w-2.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.9)]"></span>
+          </span>
         </div>
       </div>
 
