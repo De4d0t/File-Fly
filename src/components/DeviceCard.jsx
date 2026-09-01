@@ -15,6 +15,7 @@ export default function DeviceCard({ peer }) {
   const { sendFilesToDevice } = useFileFly();
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef(null);
+  const dragCounterRef = useRef(0);
 
   // Determine icon and OS badge
   const getDeviceDetails = (os) => {
@@ -53,22 +54,36 @@ export default function DeviceCard({ peer }) {
 
   const { icon: DeviceIcon, osLabel, badgeColor, iconBg } = getDeviceDetails(peer.os);
 
-  // Handle Drag & Drop directly over this specific card
+  // Smooth, flicker-free Drag & Drop handlers
+  const handleDragEnter = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current++;
+    setIsDragOver(true);
+  };
+
   const handleDragOver = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    setIsDragOver(true);
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'copy';
+    }
   };
 
   const handleDragLeave = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    setIsDragOver(false);
+    dragCounterRef.current--;
+    if (dragCounterRef.current <= 0) {
+      dragCounterRef.current = 0;
+      setIsDragOver(false);
+    }
   };
 
   const handleDrop = (e) => {
     e.preventDefault();
     e.stopPropagation();
+    dragCounterRef.current = 0;
     setIsDragOver(false);
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
@@ -85,6 +100,7 @@ export default function DeviceCard({ peer }) {
 
   return (
     <div
+      onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -103,9 +119,9 @@ export default function DeviceCard({ peer }) {
         className="hidden"
       />
 
-      {/* Drag Over Overlay Alert */}
+      {/* Drag Over Overlay Alert (pointer-events-none prevents any flicker) */}
       {isDragOver && (
-        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-slate-950/90 backdrop-blur-md rounded-3xl border-2 border-dashed border-emerald-400 text-emerald-400 animate-in fade-in zoom-in-95 duration-150">
+        <div className="absolute inset-0 z-20 pointer-events-none flex flex-col items-center justify-center bg-slate-950/90 backdrop-blur-md rounded-3xl border-2 border-dashed border-emerald-400 text-emerald-400 animate-in fade-in duration-100">
           <UploadCloud className="w-12 h-12 mb-2 animate-bounce text-emerald-400" />
           <p className="text-sm font-bold text-white">أفلت الملفات هنا للإرسال فوراً إلى</p>
           <p className="text-xs font-semibold text-emerald-400 mt-1">{peer.name}</p>
