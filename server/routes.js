@@ -142,13 +142,13 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
    * Request File Transfer
    */
   router.post('/transfer/request', (req, res) => {
-    const { sender, files } = req.body;
+    const { sender, recipient, files } = req.body;
 
-    if (!sender || !files || !Array.isArray(files) || files.length === 0) {
-      return res.status(400).json({ error: 'Sender and files array are required' });
+    if (!sender || !recipient || !files || !Array.isArray(files) || files.length === 0) {
+      return res.status(400).json({ error: 'Sender, recipient, and files array are required' });
     }
 
-    const transfer = transferEngine.createIncomingTransferRequest(sender, files);
+    const transfer = transferEngine.createTransferRequest(sender, recipient, files);
     res.json({
       success: true,
       transferId: transfer.id,
@@ -177,12 +177,12 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
    * Receiver responds to transfer request (Accept / Decline)
    */
   router.post('/transfer/respond', (req, res) => {
-    const { transferId, decision } = req.body;
+    const { transferId, decision, responderId } = req.body;
     if (!transferId || !decision) {
       return res.status(400).json({ error: 'transferId and decision (accept/decline) are required' });
     }
 
-    const result = transferEngine.respondToTransfer(transferId, decision);
+    const result = transferEngine.respondToTransfer(transferId, decision, responderId);
     res.json(result);
   });
 

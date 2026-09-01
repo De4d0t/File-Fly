@@ -8,7 +8,7 @@ const HISTORY_FILE = path.join(os.homedir(), '.filefly', 'history.json');
 export class TransferEngine {
   constructor(config, onEvent = () => {}) {
     this.config = config;
-    this.onEvent = onEvent; // Sends WebSocket events to UI
+    this.onEvent = onEvent; // Sends targeted events (type, payload, targetIds)
     this.activeTransfers = new Map(); // transferId -> transferState
     this.history = this.loadHistory();
   }
@@ -26,16 +26,13 @@ export class TransferEngine {
 
   saveHistory() {
     try {
-      const trimmed = this.history.slice(0, 100); // Keep last 100 entries
+      const trimmed = this.history.slice(0, 100);
       fs.writeFileSync(HISTORY_FILE, JSON.stringify(trimmed, null, 2), 'utf8');
     } catch (e) {
       console.error('Error saving history:', e);
     }
   }
 
-  /**
-   * Generates a safe non-colliding file destination path
-   */
   getSafeFilePath(targetDir, originalName) {
     const parsed = path.parse(originalName);
     let candidate = path.join(targetDir, originalName);
@@ -47,7 +44,6 @@ export class TransferEngine {
       counter++;
     }
 
-    // Ensure parent directory exists (for folder transfers)
     const parentDir = path.dirname(candidate);
     if (!fs.existsSync(parentDir)) {
       fs.mkdirSync(parentDir, { recursive: true });
@@ -57,16 +53,25 @@ export class TransferEngine {
   }
 
   /**
-   * Registers a new incoming transfer request waiting for receiver's approval
+   * Registers a transfer request strictly targeted from sender to recipient
    */
-  createIncomingTransferRequest(sender, files) {
+  createTransferRequest(sender, recipient, files) {
     const transferId = crypto.randomUUID();
     const totalBytes = files.reduce((acc, f) => acc + (Number(f.size) || 0), 0);
 
     const transfer = {
       id: transferId,
-      direction: 'incoming',
-      sender,
+      sender: {
+        id: sender.id,
+        name: sender.name,
+        ip: sender.ip,
+        os: sender.os || 'windows',
+      },
+      recipient: {
+        id: recipient.id,
+        name: recipient.name || 'مستلم',
+        ip: recipient.ip,
+      },
       files: files.map((f, idx) => ({
         index: idx,
         name: f.name,
@@ -89,14 +94,17 @@ export class TransferEngine {
     };
 
     this.activeTransfers.set(transferId, transfer);
-    this.notifyUI('TRANSFER_REQUEST', transfer);
+
+    // CRITICAL: Notify ONLY the recipient! (Never notify the sender)
+    this.notifyUI('TRANSFER_REQUEST', transfer, [recipient.id]);
+
     return transfer;
   }
 
   /**
-   * Handles user decision (Accept or Decline)
+   * Handles recipient response (Accept / Decline) and notifies sender
    */
-  respondToTransfer(transferId, decision) {
+  respondToTransfer(transferId, decision, responderId) {
     const transfer = this.activeTransfers.get(transferId);
     if (!transfer) return { error: 'Transfer not found' };
 
@@ -104,54 +112,22 @@ export class TransferEngine {
       transfer.status = 'accepted';
       transfer.startTime = Date.now();
       transfer.lastSpeedTime = Date.now();
-      this.notifyUI('TRANSFER_ACCEPTED', transfer);
+
+      // Notify sender that recipient accepted
+      this.notifyUI('TRANSFER_ACCEPTED', transfer, [transfer.sender.id, transfer.recipient.id]);
       return { success: true, status: 'accepted', transferId };
     } else {
       transfer.status = 'declined';
-      this.notifyUI('TRANSFER_DECLINED', transfer);
+
+      // Notify sender that recipient declined
+      this.notifyUI('TRANSFER_DECLINED', transfer, [transfer.sender.id]);
       this.activeTransfers.delete(transferId);
       return { success: true, status: 'declined', transferId };
     }
   }
 
   /**
-   * Registers an outgoing transfer for progress tracking
-   */
-  createOutgoingTransfer(recipient, files) {
-    const transferId = crypto.randomUUID();
-    const totalBytes = files.reduce((acc, f) => acc + (Number(f.size) || 0), 0);
-
-    const transfer = {
-      id: transferId,
-      direction: 'outgoing',
-      recipient,
-      files: files.map((f, idx) => ({
-        index: idx,
-        name: f.name,
-        size: Number(f.size) || 0,
-        type: f.type || 'application/octet-stream',
-        relativePath: f.relativePath || f.name,
-        bytesSent: 0,
-        completed: false,
-      })),
-      totalBytes,
-      bytesTransferred: 0,
-      status: 'pending',
-      createdAt: Date.now(),
-      startTime: null,
-      endTime: null,
-      speedBps: 0,
-      lastBytesCheck: 0,
-      lastSpeedTime: Date.now(),
-    };
-
-    this.activeTransfers.set(transferId, transfer);
-    this.notifyUI('TRANSFER_OUTGOING_CREATED', transfer);
-    return transfer;
-  }
-
-  /**
-   * Updates transfer progress and calculates real-time speed
+   * Updates transfer progress and calculates speed
    */
   updateProgress(transferId, fileIndex, chunkBytes) {
     const transfer = this.activeTransfers.get(transferId);
@@ -164,38 +140,33 @@ export class TransferEngine {
     transfer.bytesTransferred += chunkBytes;
     const file = transfer.files[fileIndex];
     if (file) {
-      if (transfer.direction === 'incoming') {
-        file.bytesReceived += chunkBytes;
-      } else {
-        file.bytesSent += chunkBytes;
-      }
+      file.bytesReceived += chunkBytes;
     }
 
-    // Speed calculation every 400ms
     const now = Date.now();
     const elapsed = (now - transfer.lastSpeedTime) / 1000;
-    if (elapsed >= 0.4) {
+    if (elapsed >= 0.35) {
       const deltaBytes = transfer.bytesTransferred - transfer.lastBytesCheck;
       transfer.speedBps = Math.max(0, deltaBytes / elapsed);
       transfer.lastBytesCheck = transfer.bytesTransferred;
       transfer.lastSpeedTime = now;
 
-      this.notifyUI('TRANSFER_PROGRESS', {
+      const progressData = {
         id: transfer.id,
         bytesTransferred: transfer.bytesTransferred,
         totalBytes: transfer.totalBytes,
         speedBps: transfer.speedBps,
         fileIndex,
-        percentage: transfer.totalBytes > 0 
+        percentage: transfer.totalBytes > 0
           ? Math.min(100, Math.round((transfer.bytesTransferred / transfer.totalBytes) * 100))
           : 0,
-      });
+      };
+
+      // Notify both parties involved in this transfer
+      this.notifyUI('TRANSFER_PROGRESS', progressData, [transfer.sender.id, transfer.recipient.id]);
     }
   }
 
-  /**
-   * Marks a single file in the batch as completed
-   */
   completeFile(transferId, fileIndex, savedPath = null) {
     const transfer = this.activeTransfers.get(transferId);
     if (!transfer) return;
@@ -212,9 +183,6 @@ export class TransferEngine {
     }
   }
 
-  /**
-   * Marks full transfer as completed and records into history
-   */
   completeTransfer(transferId) {
     const transfer = this.activeTransfers.get(transferId);
     if (!transfer) return;
@@ -223,13 +191,12 @@ export class TransferEngine {
     transfer.endTime = Date.now();
     transfer.bytesTransferred = transfer.totalBytes;
 
-    // Add to history
     const historyItem = {
       id: transfer.id,
-      direction: transfer.direction,
-      partnerName: transfer.direction === 'incoming' ? transfer.sender.name : transfer.recipient.name,
+      senderName: transfer.sender.name,
+      recipientName: transfer.recipient.name,
       filesCount: transfer.files.length,
-      firstFileName: transfer.files[0]?.name || 'Files',
+      firstFileName: transfer.files[0]?.name || 'ملف',
       savedPath: transfer.files[0]?.savedPath || null,
       totalBytes: transfer.totalBytes,
       completedAt: Date.now(),
@@ -239,19 +206,14 @@ export class TransferEngine {
     this.history.unshift(historyItem);
     this.saveHistory();
 
-    this.notifyUI('TRANSFER_COMPLETED', {
-      ...transfer,
-      historyItem,
-    });
+    // Notify both parties
+    this.notifyUI('TRANSFER_COMPLETED', { ...transfer, historyItem }, [transfer.sender.id, transfer.recipient.id]);
 
     setTimeout(() => {
       this.activeTransfers.delete(transferId);
-    }, 60000); // Keep in memory for 1 minute then clean up
+    }, 60000);
   }
 
-  /**
-   * Cancels an ongoing transfer
-   */
   cancelTransfer(transferId, reason = 'User cancelled') {
     const transfer = this.activeTransfers.get(transferId);
     if (!transfer) return;
@@ -259,11 +221,7 @@ export class TransferEngine {
     transfer.status = 'cancelled';
     transfer.cancelReason = reason;
 
-    this.notifyUI('TRANSFER_CANCELLED', {
-      id: transferId,
-      reason,
-    });
-
+    this.notifyUI('TRANSFER_CANCELLED', { id: transferId, reason }, [transfer.sender.id, transfer.recipient.id]);
     this.activeTransfers.delete(transferId);
   }
 
@@ -275,9 +233,12 @@ export class TransferEngine {
     return this.history;
   }
 
-  notifyUI(eventType, data) {
+  /**
+   * Helper to dispatch event to targeted recipients
+   */
+  notifyUI(eventType, payload, targetIds = null) {
     if (typeof this.onEvent === 'function') {
-      this.onEvent({ type: eventType, payload: data });
+      this.onEvent({ type: eventType, payload, targetIds });
     }
   }
 }

@@ -23,6 +23,11 @@ export async function requestTransferToPeer(peer, files, myDevice) {
         ip: myDevice.ip,
         os: myDevice.os,
       },
+      recipient: {
+        id: peer.id,
+        name: peer.name,
+        ip: peer.ip,
+      },
       files: fileMetaList,
     }),
   });

@@ -22,21 +22,27 @@ const wss = new WebSocketServer({ server });
 // Load configuration
 const config = getDeviceConfig();
 
-// Setup WebSocket broadcaster
-const clients = new Set();
+// Connected clients registry: ws -> { id, name, os, ip, isLocalHost }
+const socketClientMap = new Map();
 
-function broadcastToClients(type, payload) {
+/**
+ * Sends event to specific targeted client IDs, or broadcasts to all if targetIds is null
+ */
+function dispatchEvent(type, payload, targetIds = null) {
   const message = JSON.stringify({ type, payload });
-  for (const client of clients) {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(message);
+
+  for (const [ws, clientMeta] of socketClientMap.entries()) {
+    if (ws.readyState === WebSocket.OPEN) {
+      if (targetIds === null || targetIds.includes(clientMeta.id)) {
+        ws.send(message);
+      }
     }
   }
 }
 
-// Initialize transfer engine
-const transferEngine = new TransferEngine(config, (event) => {
-  broadcastToClients(event.type, event.payload);
+// Initialize transfer engine with targeted event dispatcher
+const transferEngine = new TransferEngine(config, ({ type, payload, targetIds }) => {
+  dispatchEvent(type, payload, targetIds);
 });
 
 // Initialize peer discovery
@@ -44,10 +50,10 @@ const discovery = new PeerDiscovery(
   config,
   PORT,
   (peersList) => {
-    broadcastToClients('PEERS_UPDATE', peersList);
+    dispatchEvent('PEERS_UPDATE', peersList, null);
   },
   (status) => {
-    broadcastToClients('SCAN_STATUS', status);
+    dispatchEvent('SCAN_STATUS', status, null);
   }
 );
 
@@ -59,7 +65,7 @@ app.use(express.urlencoded({ extended: true }));
 // API Routes
 app.use('/api', createRouter(config, discovery, transferEngine, PORT));
 
-// Serve Frontend (Vite build output when available)
+// Serve Frontend (Vite build output)
 const distPath = path.join(__dirname, '..', 'dist');
 if (fs.existsSync(distPath)) {
   app.use(express.static(distPath));
@@ -68,18 +74,22 @@ if (fs.existsSync(distPath)) {
   });
 }
 
-// Map of web client sockets: clientId -> WebSocket
-const webClients = new Map();
-
 // WebSocket Connection Handling
 wss.on('connection', (ws, req) => {
-  clients.add(ws);
-  let currentClientId = null;
   const rawClientIP = req.socket.remoteAddress?.replace(/^::ffff:/, '') || req.headers['x-forwarded-for'] || '127.0.0.1';
   const primaryHostIP = getPrimaryLocalIP();
   const isLocalHost = rawClientIP === '127.0.0.1' || rawClientIP === '::1' || rawClientIP === primaryHostIP || rawClientIP === 'localhost';
 
-  // Send initial state to newly connected client
+  // Default client registration before client hello
+  socketClientMap.set(ws, {
+    id: isLocalHost ? config.id : null,
+    name: isLocalHost ? config.name : 'Unknown Device',
+    os: getDeviceOS(),
+    ip: rawClientIP,
+    isLocalHost,
+  });
+
+  // Send initial state
   ws.send(
     JSON.stringify({
       type: 'INIT_STATE',
@@ -106,8 +116,12 @@ wss.on('connection', (ws, req) => {
       const { type, payload } = JSON.parse(messageBuffer.toString('utf8'));
 
       if (type === 'REGISTER_PEER') {
-        currentClientId = payload.id;
-        webClients.set(payload.id, ws);
+        const clientMeta = socketClientMap.get(ws);
+        if (clientMeta) {
+          clientMeta.id = payload.id;
+          clientMeta.name = payload.name;
+          clientMeta.os = payload.os;
+        }
 
         if (payload.id && payload.id !== config.id) {
           discovery.addOrUpdatePeer({
@@ -120,27 +134,31 @@ wss.on('connection', (ws, req) => {
             isWebClient: true,
             lastSeen: Date.now(),
           });
-          broadcastToClients('PEERS_UPDATE', discovery.getPeersList());
+          dispatchEvent('PEERS_UPDATE', discovery.getPeersList(), null);
         }
       } else if (type === 'SET_VISIBILITY') {
-        const targetId = payload.id || currentClientId;
+        const clientMeta = socketClientMap.get(ws);
+        const targetId = payload.id || clientMeta?.id;
+
         if (targetId && targetId !== config.id && discovery.peers.has(targetId)) {
           const peer = discovery.peers.get(targetId);
           peer.visible = Boolean(payload.visible);
-          broadcastToClients('PEERS_UPDATE', discovery.getPeersList());
+          dispatchEvent('PEERS_UPDATE', discovery.getPeersList(), null);
         } else {
           discovery.setVisibility(payload.visible);
-          broadcastToClients('PEERS_UPDATE', discovery.getPeersList());
+          dispatchEvent('PEERS_UPDATE', discovery.getPeersList(), null);
         }
       } else if (type === 'SET_NAME') {
-        const targetId = payload.id || currentClientId;
+        const clientMeta = socketClientMap.get(ws);
+        const targetId = payload.id || clientMeta?.id;
+
         if (targetId && targetId !== config.id && discovery.peers.has(targetId)) {
           const peer = discovery.peers.get(targetId);
           peer.name = payload.name;
-          broadcastToClients('PEERS_UPDATE', discovery.getPeersList());
+          dispatchEvent('PEERS_UPDATE', discovery.getPeersList(), null);
         } else {
           discovery.setName(payload.name);
-          broadcastToClients('PEERS_UPDATE', discovery.getPeersList());
+          dispatchEvent('PEERS_UPDATE', discovery.getPeersList(), null);
         }
       } else if (type === 'REFRESH_PEERS' || type === 'SCAN_SUBNET') {
         discovery.announce('ANNOUNCE');
@@ -160,11 +178,12 @@ wss.on('connection', (ws, req) => {
   });
 
   ws.on('close', () => {
-    clients.delete(ws);
-    if (currentClientId) {
-      webClients.delete(currentClientId);
-      discovery.peers.delete(currentClientId);
-      broadcastToClients('PEERS_UPDATE', discovery.getPeersList());
+    const clientMeta = socketClientMap.get(ws);
+    socketClientMap.delete(ws);
+
+    if (clientMeta?.id && clientMeta.id !== config.id) {
+      discovery.peers.delete(clientMeta.id);
+      dispatchEvent('PEERS_UPDATE', discovery.getPeersList(), null);
     }
   });
 });

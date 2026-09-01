@@ -152,16 +152,30 @@ export function FileFlyProvider({ children }) {
 
     // When someone wants to send files to this device
     const unsubRequest = socketService.on('TRANSFER_REQUEST', (transfer) => {
-      setPendingIncomingRequest(transfer);
-      playTransferRequestSound();
+      setMyDevice((currentMyDevice) => {
+        // STRICT SAFETY CHECK: If I am the sender, DO NOT show incoming prompt
+        if (transfer.sender?.id === currentMyDevice.id) {
+          return currentMyDevice;
+        }
 
-      // Show native desktop notification if available
-      if (window.fileflyDesktop?.showNotification) {
-        window.fileflyDesktop.showNotification(
-          'طلب نقل ملف جديد - FileFly',
-          `الجهاز ${transfer.sender.name} يرغب في إرسال ${transfer.files.length} ملف.`
-        );
-      }
+        // If I am not the intended recipient, ignore
+        if (transfer.recipient?.id && transfer.recipient.id !== currentMyDevice.id) {
+          return currentMyDevice;
+        }
+
+        setPendingIncomingRequest(transfer);
+        playTransferRequestSound();
+
+        // Show native desktop notification if available
+        if (window.fileflyDesktop?.showNotification) {
+          window.fileflyDesktop.showNotification(
+            'طلب نقل ملف جديد - FileFly',
+            `الجهاز ${transfer.sender.name} يرغب في إرسال ${transfer.files.length} ملف.`
+          );
+        }
+
+        return currentMyDevice;
+      });
     });
 
     // Live progress for incoming files
@@ -284,7 +298,7 @@ export function FileFlyProvider({ children }) {
       await fetch('/api/transfer/respond', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ transferId, decision }),
+        body: JSON.stringify({ transferId, decision, responderId: myDevice.id }),
       });
     } catch (e) {}
   };
