@@ -150,7 +150,7 @@ wss.on('connection', (ws, req) => {
               lastSeen: Date.now(),
             });
           } else {
-            discovery.removePeer(clientId);
+            discovery.removePeer(clientId, rawClientIP);
           }
           dispatchEvent('PEERS_UPDATE', discovery.getPeersList(), null);
         }
@@ -173,7 +173,7 @@ wss.on('connection', (ws, req) => {
               lastSeen: Date.now(),
             });
           } else {
-            discovery.removePeer(targetId);
+            discovery.removePeer(targetId, rawClientIP);
           }
           dispatchEvent('PEERS_UPDATE', discovery.getPeersList(), null);
         } else {
@@ -224,7 +224,7 @@ wss.on('connection', (ws, req) => {
       if (!hasOtherSockets) {
         const timer = setTimeout(() => {
           pendingDisconnectTimers.delete(clientMeta.id);
-          discovery.removePeer(clientMeta.id);
+          discovery.removePeer(clientMeta.id, clientMeta.ip);
         }, 4000);
         pendingDisconnectTimers.set(clientMeta.id, timer);
       }

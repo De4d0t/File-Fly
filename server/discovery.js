@@ -100,22 +100,24 @@ export class PeerDiscovery {
       // Ignore our own broadcast packets
       if (!data || data.id === this.config.id) return;
 
+      const peerIP = rinfo.address || data.ip;
+
       if (data.type === 'ANNOUNCE') {
         if (data.visible !== false) {
           this.addOrUpdatePeer({
             id: data.id,
             name: data.name || 'جهاز غير معروف',
-            ip: rinfo.address || data.ip,
+            ip: peerIP,
             port: data.port || this.serverPort,
             os: data.os || 'unknown',
             visible: true,
             lastSeen: Date.now(),
           });
         } else {
-          this.removePeer(data.id);
+          this.removePeer(data.id, peerIP);
         }
       } else if (data.type === 'LEAVE') {
-        this.removePeer(data.id);
+        this.removePeer(data.id, peerIP);
       }
     } catch (e) {}
   }
@@ -143,9 +145,13 @@ export class PeerDiscovery {
   }
 
   startBroadcasting() {
-    this.announce('ANNOUNCE');
-    this.broadcastTimer = setInterval(() => {
+    if (this.config.visible) {
       this.announce('ANNOUNCE');
+    }
+    this.broadcastTimer = setInterval(() => {
+      if (this.config.visible) {
+        this.announce('ANNOUNCE');
+      }
     }, BROADCAST_INTERVAL_MS);
   }
 
@@ -178,10 +184,7 @@ export class PeerDiscovery {
     if (peer.ip === hostIP || peer.ip === '127.0.0.1') return;
 
     if (peer.visible === false) {
-      if (this.peers.has(peer.id)) {
-        this.peers.delete(peer.id);
-        this.notifyPeersChanged();
-      }
+      this.removePeer(peer.id, peer.ip);
       return;
     }
 
@@ -200,9 +203,15 @@ export class PeerDiscovery {
     }
   }
 
-  removePeer(peerId) {
-    if (this.peers.has(peerId)) {
-      this.peers.delete(peerId);
+  removePeer(peerId, peerIP = null) {
+    let changed = false;
+    for (const [id, peer] of this.peers.entries()) {
+      if (id === peerId || (peerIP && peer.ip === peerIP)) {
+        this.peers.delete(id);
+        changed = true;
+      }
+    }
+    if (changed) {
       this.notifyPeersChanged();
     }
   }
