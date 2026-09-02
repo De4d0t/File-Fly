@@ -328,10 +328,13 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
   });
 
   /**
-   * Open Downloads Folder in OS File Explorer
+   * Open Downloads Folder in OS File Explorer (or highlight file)
    */
   router.post('/open-downloads', (req, res) => {
-    const dir = config.downloadsDir || path.join(os.homedir(), 'Downloads', 'FileFly');
+    const { filePath } = req.body || {};
+    const defaultDownloads = path.join(os.homedir(), 'Downloads');
+    const dir = config.downloadsDir || defaultDownloads;
+
     try {
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
@@ -339,14 +342,23 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
 
       const osType = getDeviceOS();
       if (osType === 'windows') {
-        const escaped = dir.replace(/'/g, "''");
-        exec(`powershell -NoProfile -Command "Start-Process explorer.exe -ArgumentList '${escaped}'"`, (err) => {
-          if (err) {
-            exec(`explorer.exe "${dir}"`);
-          }
-        });
+        if (filePath && fs.existsSync(filePath)) {
+          // Open Explorer and highlight the exact file
+          const normFile = path.normalize(filePath);
+          exec(`explorer.exe /select,"${normFile}"`, (err) => {
+            if (err) {
+              exec(`explorer.exe "${path.normalize(dir)}"`);
+            }
+          });
+        } else {
+          exec(`explorer.exe "${path.normalize(dir)}"`);
+        }
       } else if (osType === 'mac') {
-        exec(`open "${dir}"`);
+        if (filePath && fs.existsSync(filePath)) {
+          exec(`open -R "${filePath}"`);
+        } else {
+          exec(`open "${dir}"`);
+        }
       } else if (osType === 'linux') {
         exec(`xdg-open "${dir}"`);
       }
@@ -362,7 +374,7 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
    * Open / Launch / Play Received File in Default OS Application
    */
   router.post('/open-file', (req, res) => {
-    const { transferId, filePath, fileName } = req.body;
+    const { transferId, filePath, fileName } = req.body || {};
     let targetPath = filePath;
 
     if (!targetPath && transferId) {
@@ -374,14 +386,14 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
       }
     }
 
+    const defaultDir = config.downloadsDir || path.join(os.homedir(), 'Downloads');
+
     if (!targetPath && fileName) {
-      const dir = config.downloadsDir || path.join(os.homedir(), 'Downloads', 'FileFly');
-      targetPath = path.join(dir, fileName);
+      targetPath = path.join(defaultDir, fileName);
     }
 
     if (!targetPath || !fs.existsSync(targetPath)) {
       // Fallback: check in default downloads directory
-      const defaultDir = config.downloadsDir || path.join(os.homedir(), 'Downloads', 'FileFly');
       if (fileName && fs.existsSync(path.join(defaultDir, fileName))) {
         targetPath = path.join(defaultDir, fileName);
       } else {
@@ -392,10 +404,12 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
     try {
       const osType = getDeviceOS();
       if (osType === 'windows') {
-        const escaped = targetPath.replace(/'/g, "''");
-        exec(`powershell -NoProfile -Command "Start-Process -FilePath '${escaped}'"`, (err) => {
+        const norm = path.normalize(targetPath);
+        // Start file in Windows default associated program
+        exec(`cmd.exe /c start "" "${norm}"`, (err) => {
           if (err) {
-            exec(`start "" "${targetPath}"`);
+            const escaped = norm.replace(/'/g, "''");
+            exec(`powershell -NoProfile -Command "Start-Process -FilePath '${escaped}'"`);
           }
         });
       } else if (osType === 'mac') {
@@ -431,6 +445,7 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
       res.json({
         url: connectUrl,
         qrDataUrl,
+        port: serverPort,
       });
     } catch (err) {
       res.status(500).json({ error: 'Failed to generate QR code' });

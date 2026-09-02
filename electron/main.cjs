@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, dialog, shell, Notification } = require('electron');
 const path = require('path');
+const fs = require('fs');
 
 let mainWindow = null;
 
@@ -73,11 +74,27 @@ ipcMain.handle('dialog:openFolder', async () => {
   return result.filePaths;
 });
 
-// Open folder in explorer
-ipcMain.handle('shell:openDownloads', async (event, dirPath) => {
-  if (dirPath) {
-    shell.openPath(dirPath);
+// File and Folder OS integrations
+ipcMain.handle('shell:openFile', async (event, filePath) => {
+  if (filePath && fs.existsSync(filePath)) {
+    return await shell.openPath(filePath);
   }
+  return 'File not found';
+});
+
+ipcMain.handle('shell:showInFolder', async (event, filePath) => {
+  if (filePath && fs.existsSync(filePath)) {
+    shell.showItemInFolder(filePath);
+    return true;
+  }
+  const downloads = app.getPath('downloads');
+  shell.openPath(downloads);
+  return false;
+});
+
+ipcMain.handle('shell:openDownloads', async (event, dirPath) => {
+  const target = dirPath && fs.existsSync(dirPath) ? dirPath : app.getPath('downloads');
+  return await shell.openPath(target);
 });
 
 // System Notifications

@@ -7,22 +7,21 @@ import QrCodeModal from './components/QrCodeModal.jsx';
 import HistoryModal from './components/HistoryModal.jsx';
 import RenameModal from './components/RenameModal.jsx';
 import { useFileFly } from './context/FileFlyContext.jsx';
-import { Wifi, ShieldCheck, Zap } from 'lucide-react';
+import { Instagram, Globe, Github, Send } from 'lucide-react';
 
 export default function App() {
   const { myDevice, isOnline } = useFileFly();
 
   return (
-    <div className="min-h-screen bg-dark-bg flex flex-col selection:bg-brand-500 selection:text-white">
-      {/* Background Decorative Ambient Glows */}
-      <div className="fixed top-0 right-1/4 w-96 h-96 bg-brand-500/10 rounded-full blur-3xl pointer-events-none -z-10" />
-      <div className="fixed bottom-0 left-1/4 w-96 h-96 bg-sky-500/10 rounded-full blur-3xl pointer-events-none -z-10" />
+    <div className="min-h-screen bg-slate-950 flex flex-col selection:bg-sky-500 selection:text-white">
+      {/* Soft Ambient Top Glow */}
+      <div className="fixed top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-sky-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
 
       {/* App Header */}
       <Header />
 
       {/* Main Content Viewport */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-8">
+      <main className="flex-1 max-w-5xl w-full mx-auto px-3 sm:px-6 py-3 sm:py-6">
         <DeviceGrid />
       </main>
 
@@ -33,32 +32,52 @@ export default function App() {
       <HistoryModal />
       <RenameModal />
 
-      {/* Footer / Status Bar */}
-      <footer className="w-full border-t border-slate-800/80 glass-panel py-3 px-6 text-xs text-slate-400">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <span
-              className={`w-2 h-2 rounded-full ${
-                isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'
-              }`}
-            />
-            <span>
-              {isOnline ? 'الخادم المحلي نشط وجاهز لنقل الملفات' : 'جاري الاتصال بالخادم المحلي...'}
-            </span>
-            <span className="text-slate-600">|</span>
-            <span className="font-mono text-slate-400">IP: {myDevice.ip}</span>
-          </div>
+      {/* Footer / Floating Rounded Status Bar */}
+      <footer className="max-w-5xl w-full mx-auto px-3 sm:px-6 pb-3 sm:pb-6">
+        <div className="w-full rounded-2xl sm:rounded-3xl glass-panel border border-slate-800/80 shadow-xl px-4 sm:px-6 py-2.5 sm:py-3 flex items-center justify-center gap-2 sm:gap-3 text-xs text-slate-400">
+          {/* Telegram */}
+          <a
+            href="https://t.me"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-slate-400 hover:text-sky-400 hover:bg-sky-500/10 border border-transparent hover:border-sky-400/30 transition-all hover:scale-110 active:scale-95"
+            title="Telegram (تليغرام)"
+          >
+            <Send className="w-4 h-4" />
+          </a>
 
-          <div className="flex items-center gap-4 text-[11px] text-slate-400">
-            <span className="flex items-center gap-1">
-              <Zap className="w-3.5 h-3.5 text-brand-400" />
-              <span>سرعة شبكة محلية قصوى (LAN/Wi-Fi)</span>
-            </span>
-            <span className="flex items-center gap-1">
-              <ShieldCheck className="w-3.5 h-3.5 text-sky-400" />
-              <span>نقل مباشر 100% بدون إنترنت</span>
-            </span>
-          </div>
+          {/* Instagram */}
+          <a
+            href="https://instagram.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-slate-400 hover:text-pink-400 hover:bg-pink-500/10 border border-transparent hover:border-pink-500/30 transition-all hover:scale-110 active:scale-95"
+            title="Instagram (انستغرام)"
+          >
+            <Instagram className="w-4 h-4" />
+          </a>
+
+          {/* Website */}
+          <a
+            href="#"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 border border-transparent hover:border-emerald-500/30 transition-all hover:scale-110 active:scale-95"
+            title="الموقع الإلكتروني"
+          >
+            <Globe className="w-4 h-4" />
+          </a>
+
+          {/* GitHub */}
+          <a
+            href="https://github.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700/40 border border-transparent hover:border-slate-600/50 transition-all hover:scale-110 active:scale-95"
+            title="GitHub (جيت هب)"
+          >
+            <Github className="w-4 h-4" />
+          </a>
         </div>
       </footer>
     </div>

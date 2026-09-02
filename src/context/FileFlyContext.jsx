@@ -35,12 +35,13 @@ export function FileFlyProvider({ children }) {
   // Helper to load client settings safely from localStorage
   const getInitialClientIdentity = () => {
     if (typeof window === 'undefined') {
-      return { id: 'temp-id', name: 'جهازي', visible: true };
+      return { id: 'temp-id', name: isHostMachine ? 'main computer' : 'جهازي', visible: true };
     }
     const id = localStorage.getItem('filefly_device_id') || generateUUID();
     localStorage.setItem('filefly_device_id', id);
 
-    const name = localStorage.getItem('filefly_device_name') || getClientDefaultName();
+    const savedName = localStorage.getItem('filefly_device_name');
+    const name = savedName || (isHostMachine ? 'main computer' : getClientDefaultName());
     const visible = localStorage.getItem('filefly_device_visible') !== 'false';
 
     return { id, name, visible };
@@ -63,13 +64,13 @@ export function FileFlyProvider({ children }) {
   const [peers, setPeers] = useState([]);
   const [history, setHistory] = useState([]);
   const [isScanning, setIsScanning] = useState(false);
-  const [isRadarActive, setIsRadarActive] = useState(() => {
+  const [isRadarActive, setIsRadarActive] = useState(true);
+
+  useEffect(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('filefly_radar_active');
-      return saved !== null ? saved === 'true' : true;
+      localStorage.setItem('filefly_radar_active', 'true');
     }
-    return true;
-  });
+  }, []);
   const [pendingIncomingRequest, setPendingIncomingRequest] = useState(null);
   
   // Active transfer state for progress bars
@@ -127,6 +128,9 @@ export function FileFlyProvider({ children }) {
 
       if (isHost && host) {
         setMyDevice(host);
+        if (typeof window !== 'undefined' && host.name) {
+          localStorage.setItem('filefly_device_name', host.name);
+        }
         if (data.peers) {
           setPeers(data.peers.filter((p) => p.id !== host.id));
         }
@@ -183,15 +187,6 @@ export function FileFlyProvider({ children }) {
     const unsubScanStatus = socketService.on('SCAN_STATUS', (status) => {
       const scanning = typeof status === 'boolean' ? status : Boolean(status?.scanning);
       setIsScanning(scanning);
-    });
-
-    const unsubRadarStatus = socketService.on('RADAR_STATUS', (status) => {
-      if (typeof status?.active === 'boolean') {
-        setIsRadarActive(status.active);
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('filefly_radar_active', String(status.active));
-        }
-      }
     });
 
     const unsubDevice = socketService.on('DEVICE_UPDATE', (updated) => {
@@ -294,7 +289,6 @@ export function FileFlyProvider({ children }) {
       unsubInitEvent();
       unsubPeers();
       unsubScanStatus();
-      unsubRadarStatus();
       unsubDevice();
       unsubRequest();
       unsubProgress();
@@ -560,15 +554,32 @@ export function FileFlyProvider({ children }) {
     setActiveTransfer(null);
   };
 
-  // Open Downloads Folder in Explorer (on host PC) or open History/Downloads Modal (on mobile/second PC)
-  const openDownloadsFolder = async () => {
+  // Open Downloads Folder in Explorer (on host PC or via API)
+  const openDownloadsFolder = async (itemOrPath) => {
+    let filePath = null;
+    if (typeof itemOrPath === 'string') {
+      filePath = itemOrPath;
+    } else if (itemOrPath?.savedPath) {
+      filePath = itemOrPath.savedPath;
+    }
+
     if (isHostMachine) {
-      if (typeof window !== 'undefined' && window.fileflyDesktop?.openDownloadsFolder) {
-        window.fileflyDesktop.openDownloadsFolder();
-        return;
+      if (typeof window !== 'undefined' && window.fileflyDesktop) {
+        if (filePath && window.fileflyDesktop.showInFolder) {
+          window.fileflyDesktop.showInFolder(filePath);
+          return;
+        }
+        if (window.fileflyDesktop.openDownloadsFolder) {
+          window.fileflyDesktop.openDownloadsFolder();
+          return;
+        }
       }
       try {
-        await fetch('/api/open-downloads', { method: 'POST' });
+        await fetch('/api/open-downloads', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filePath }),
+        });
       } catch (e) {
         console.error('Failed to open downloads folder:', e);
       }
@@ -577,21 +588,33 @@ export function FileFlyProvider({ children }) {
     }
   };
 
-  // Open / Run Received File
+  // Open / Run Received File directly in Windows default program
   const openFile = async (itemOrTransfer) => {
     const transferId = itemOrTransfer?.id;
     const fileName = itemOrTransfer?.firstFileName || itemOrTransfer?.name;
     const savedPath = itemOrTransfer?.savedPath;
 
     if (isHostMachine) {
+      if (typeof window !== 'undefined' && window.fileflyDesktop && savedPath) {
+        if (window.fileflyDesktop.openFile) {
+          window.fileflyDesktop.openFile(savedPath);
+          return;
+        }
+      }
       try {
-        await fetch('/api/open-file', {
+        const res = await fetch('/api/open-file', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ transferId, fileName, filePath: savedPath }),
         });
+        if (!res.ok && transferId) {
+          window.open(`/api/transfer/view/${transferId}/0`, '_blank');
+        }
       } catch (e) {
         console.error('Failed to open file:', e);
+        if (transferId) {
+          window.open(`/api/transfer/view/${transferId}/0`, '_blank');
+        }
       }
     } else {
       // On web/mobile client: open/stream the file directly in browser media viewer

@@ -9,6 +9,7 @@ import { getDeviceConfig, getPrimaryLocalIP, getDeviceOS } from './networkUtils.
 import { PeerDiscovery } from './discovery.js';
 import { TransferEngine } from './transferEngine.js';
 import { createRouter } from './routes.js';
+import { MdnsResponder } from './mdnsResponder.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,6 +22,9 @@ const wss = new WebSocketServer({ server });
 
 // Load configuration
 const config = getDeviceConfig();
+
+// Initialize mDNS Local Hostname Responder
+const mdnsResponder = new MdnsResponder(['fly.local', 'f.local', 'filefly.local']);
 
 // Connected clients registry: ws -> { id, name, visible, os, ip, isLocalHost }
 const socketClientMap = new Map();
@@ -205,7 +209,6 @@ wss.on('connection', (ws, req) => {
       } else if (type === 'SET_RADAR') {
         const active = Boolean(payload.active);
         discovery.setRadarActive(active);
-        dispatchEvent('RADAR_STATUS', { active }, null);
       } else if (type === 'REFRESH_PEERS' || type === 'SCAN_SUBNET') {
         discovery.announce('ANNOUNCE');
         if (discovery.scanner) {
@@ -242,10 +245,43 @@ wss.on('connection', (ws, req) => {
 
 // Start Server
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n🚀 [FileFly Server] Running on http://${getPrimaryLocalIP()}:${PORT}`);
-  console.log(`📱 Connect phones via: http://${getPrimaryLocalIP()}:${PORT}\n`);
+  const localIP = getPrimaryLocalIP();
+  console.log(`\n🚀 [FileFly Server] Running on http://${localIP}:${PORT}`);
+  console.log(`🌐 [Quick mDNS Link] http://fly.local or http://f.local`);
+  console.log(`📱 Connect phones via: http://${localIP}:${PORT}\n`);
   discovery.start();
+  mdnsResponder.start();
+  startRedirectServer(PORT);
 });
+
+// ── Port 80 Redirect Server ──────────────────────────────────────────────────
+// Redirects http://fly.local  →  http://fly.local:PORT
+// Works only when the process has permission to bind port 80.
+// Fails silently if another service owns port 80.
+let redirectServer = null;
+
+function startRedirectServer(mainPort) {
+  const redirectApp = express();
+  redirectApp.use((req, res) => {
+    const host = (req.headers.host || 'fly.local').replace(/:\d+$/, '');
+    res.redirect(301, `http://${host}:${mainPort}${req.url}`);
+  });
+
+  redirectServer = http.createServer(redirectApp);
+
+  redirectServer.on('error', (err) => {
+    if (err.code === 'EACCES') {
+      console.warn('[FileFly] Port 80 needs admin rights — fly.local will need :port suffix.');
+    } else if (err.code !== 'EADDRINUSE') {
+      console.warn('[FileFly] Port 80 redirect unavailable:', err.message);
+    }
+    redirectServer = null;
+  });
+
+  redirectServer.listen(80, '0.0.0.0', () => {
+    console.log('[FileFly] ✅ fly.local (port 80) redirect active → fly.local:' + mainPort);
+  });
+}
 
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
@@ -268,6 +304,8 @@ process.on('unhandledRejection', (reason) => {
 process.on('SIGINT', () => {
   console.log('\n[FileFly Server] Shutting down...');
   discovery.stop();
+  mdnsResponder.stop();
+  if (redirectServer) redirectServer.close();
   server.close(() => {
     process.exit(0);
   });
@@ -275,6 +313,8 @@ process.on('SIGINT', () => {
 
 process.on('SIGTERM', () => {
   discovery.stop();
+  mdnsResponder.stop();
+  if (redirectServer) redirectServer.close();
   server.close(() => {
     process.exit(0);
   });

@@ -23,11 +23,11 @@ export default function RenameModal() {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md">
-      <div className="relative w-full max-w-sm rounded-3xl glass-panel p-6 border border-sky-500/30 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/85 backdrop-blur-md">
+      <div className="relative w-full max-w-sm rounded-2xl sm:rounded-3xl glass-panel p-5 sm:p-6 border border-sky-500/30 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
         <button
           onClick={() => setIsRenameModalOpen(false)}
-          className="absolute top-4 left-4 p-2 rounded-full bg-slate-800 text-slate-400 hover:text-white transition-colors"
+          className="absolute top-3.5 left-3.5 sm:top-4 sm:left-4 p-1.5 sm:p-2 rounded-full bg-slate-800 text-slate-400 hover:text-white transition-colors"
         >
           <X className="w-4 h-4" />
         </button>

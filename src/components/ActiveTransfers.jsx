@@ -31,9 +31,9 @@ export default function ActiveTransfers() {
   const eta = calculateETA(remainingBytes, activeTransfer.speedBps);
 
   return (
-    <div className="fixed bottom-6 left-6 right-6 sm:left-auto sm:right-6 sm:w-96 z-40 animate-in slide-in-from-bottom-6 duration-300">
+    <div className="fixed bottom-3 left-3 right-3 sm:bottom-6 sm:left-auto sm:right-6 sm:w-96 z-40 animate-in slide-in-from-bottom-6 duration-300">
       <div 
-        className={`rounded-3xl glass-panel p-5 border shadow-2xl transition-all duration-300 ${
+        className={`rounded-2xl sm:rounded-3xl glass-panel p-4 sm:p-5 border shadow-2xl transition-all duration-300 ${
           isDeclined || isError
             ? 'border-red-500/50 shadow-red-500/20 bg-slate-950/95 glow-red'
             : isTimeout
@@ -192,9 +192,9 @@ export default function ActiveTransfers() {
                   {/* Option 2: Open Containing Folder */}
                   {isHostMachine ? (
                     <button
-                      onClick={openDownloadsFolder}
+                      onClick={() => openDownloadsFolder(activeTransfer)}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-xs font-bold text-emerald-300 hover:text-white transition-all shadow-sm active:scale-95 glow-green"
-                      title="فتح مجلد التنزيلات في جهازك"
+                      title="فتح مجلد التنزيلات وتحديد الملف المستلم في Windows Explorer"
                     >
                       <FolderOpen className="w-3.5 h-3.5 text-emerald-400" />
                       <span>فتح المجلد</span>

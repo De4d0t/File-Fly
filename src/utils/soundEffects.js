@@ -14,48 +14,65 @@ function getAudioContext() {
     }
   }
   if (audioCtx && audioCtx.state === 'suspended') {
-    audioCtx.resume();
+    audioCtx.resume().catch(() => {});
   }
   return audioCtx;
 }
 
+// Global user-gesture audio unlocker for mobile & desktop browsers
+if (typeof window !== 'undefined') {
+  const unlockAudio = () => {
+    try {
+      const ctx = getAudioContext();
+      if (ctx && ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
+    } catch (e) {}
+  };
+  window.addEventListener('pointerdown', unlockAudio, { passive: true });
+  window.addEventListener('touchstart', unlockAudio, { passive: true });
+  window.addEventListener('click', unlockAudio, { passive: true });
+}
+
 /**
- * Double-ping chime when receiving a new transfer request
+ * Crisp 3-tone harmonic chime when receiving a new transfer request
  */
 export function playTransferRequestSound() {
   try {
+    // Vibrate phone if supported
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      navigator.vibrate([180, 90, 180]);
+    }
+
     const ctx = getAudioContext();
     if (!ctx) return;
 
     const now = ctx.currentTime;
-    
-    // Note 1 (E5 - 659 Hz)
-    const osc1 = ctx.createOscillator();
-    const gain1 = ctx.createGain();
-    osc1.type = 'sine';
-    osc1.frequency.setValueAtTime(659.25, now);
-    gain1.gain.setValueAtTime(0, now);
-    gain1.gain.linearRampToValueAtTime(0.15, now + 0.04);
-    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+    // Pleasant chord: A5 (880Hz) -> C#6 (1108.7Hz) -> E6 (1318.5Hz)
+    const tones = [
+      { freq: 880.00, delay: 0, duration: 0.35, gain: 0.3 },
+      { freq: 1108.73, delay: 0.1, duration: 0.4, gain: 0.35 },
+      { freq: 1318.51, delay: 0.22, duration: 0.65, gain: 0.4 },
+    ];
 
-    osc1.connect(gain1);
-    gain1.connect(ctx.destination);
-    osc1.start(now);
-    osc1.stop(now + 0.35);
+    tones.forEach(({ freq, delay, duration, gain }) => {
+      const startTime = now + delay;
+      const osc = ctx.createOscillator();
+      const gainNode = ctx.createGain();
 
-    // Note 2 (B5 - 987 Hz)
-    const osc2 = ctx.createOscillator();
-    const gain2 = ctx.createGain();
-    osc2.type = 'sine';
-    osc2.frequency.setValueAtTime(987.77, now + 0.12);
-    gain2.gain.setValueAtTime(0, now + 0.12);
-    gain2.gain.linearRampToValueAtTime(0.2, now + 0.16);
-    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, startTime);
 
-    osc2.connect(gain2);
-    gain2.connect(ctx.destination);
-    osc2.start(now + 0.12);
-    osc2.stop(now + 0.6);
+      gainNode.gain.setValueAtTime(0, startTime);
+      gainNode.gain.linearRampToValueAtTime(gain, startTime + 0.025);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+
+      osc.connect(gainNode);
+      gainNode.connect(ctx.destination);
+
+      osc.start(startTime);
+      osc.stop(startTime + duration + 0.05);
+    });
   } catch (e) {
     // Audio context may be restricted by autoplay policy
   }
