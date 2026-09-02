@@ -6,14 +6,13 @@ import {
   QrCode, 
   Wifi, 
   Sparkles,
-  HelpCircle,
-  Share2
+  Power
 } from 'lucide-react';
 import { useFileFly } from '../context/FileFlyContext.jsx';
 import DeviceCard from './DeviceCard.jsx';
 
 export default function DeviceGrid() {
-  const { peers, myDevice, isRadarActive, toggleRadar, setIsQrModalOpen } = useFileFly();
+  const { peers, myDevice, isRadarActive, toggleRadar } = useFileFly();
 
   // Strict multi-layer filter: Guarantee that self device NEVER shows in the grid
   const filteredPeers = (peers || []).filter((peer) => {
@@ -31,85 +30,117 @@ export default function DeviceGrid() {
   });
 
   return (
-    <div className="w-full">
-      {/* Section Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          {/* Clickable Animated Radar Icon Box (ON / OFF) */}
+    <div className="w-full space-y-6">
+      {/* Central Interactive Sonar Radar Widget */}
+      <div className="relative overflow-hidden rounded-3xl glass-panel p-8 sm:p-10 text-center border border-slate-800/80 shadow-2xl transition-all">
+        {/* Clickable Radar Scanner Center */}
+        <div className="relative mx-auto w-48 h-48 mb-5 flex items-center justify-center">
+          {/* Concentric Sonar Ripple Waves when Radar is Active */}
+          {isRadarActive && (
+            <>
+              <div className="absolute inset-0 rounded-full border border-sky-400/40 animate-radar-ripple pointer-events-none"></div>
+              <div 
+                className="absolute inset-0 rounded-full border border-emerald-400/35 animate-radar-ripple pointer-events-none" 
+                style={{ animationDelay: '1.1s' }}
+              ></div>
+              <div 
+                className="absolute inset-0 rounded-full border border-sky-300/30 animate-radar-ripple pointer-events-none" 
+                style={{ animationDelay: '2.2s' }}
+              ></div>
+
+              {/* Rotating Sonar Sweep Beam */}
+              <div className="absolute inset-2 rounded-full overflow-hidden pointer-events-none animate-radar-sweep">
+                <div className="w-1/2 h-1/2 bg-gradient-to-br from-sky-400/25 to-transparent origin-bottom-right rounded-tl-full"></div>
+              </div>
+
+              {/* Outer Glow Halo */}
+              <div className="absolute inset-4 rounded-full border border-sky-400/20 bg-sky-500/5 backdrop-blur-[2px]"></div>
+            </>
+          )}
+
+          {/* Central Interactive Button */}
           <button
             onClick={toggleRadar}
-            className={`relative w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer hover:scale-110 active:scale-95 shadow-sm ${
-              isRadarActive 
-                ? 'bg-sky-500/25 border border-sky-400/60 shadow-lg shadow-sky-500/30 ring-2 ring-sky-400/40 glow-cyan' 
-                : 'bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-400'
+            className={`relative z-20 w-24 h-24 rounded-full flex flex-col items-center justify-center transition-all duration-300 cursor-pointer shadow-2xl group active:scale-95 ${
+              isRadarActive
+                ? 'bg-slate-900/95 border-2 border-sky-400/80 shadow-sky-500/30 hover:border-sky-300 hover:shadow-sky-400/50 glow-cyan hover:scale-105'
+                : 'bg-slate-900/80 border-2 border-slate-700/80 hover:border-slate-500 text-slate-500 hover:text-slate-300 hover:scale-105'
             }`}
-            title={isRadarActive ? 'الرادار يعمل (انقر للإيقاف)' : 'الرادار متوقف (انقر للتشغيل)'}
+            title={isRadarActive ? 'الرادار يعمل (انقر لإيقاف الرادار)' : 'الرادار متوقف (انقر لتشغيل الرادار)'}
           >
-            {isRadarActive && (
-              <span className="absolute -inset-1 rounded-2xl bg-sky-400/20 animate-ping pointer-events-none"></span>
+            {isRadarActive ? (
+              <>
+                <Radio className="w-10 h-10 text-sky-400 animate-pulse drop-shadow-[0_0_12px_rgba(56,189,248,0.9)]" />
+                <span className="text-[10px] font-bold text-sky-300 mt-1 font-mono tracking-wider">نشط</span>
+              </>
+            ) : (
+              <>
+                <Power className="w-8 h-8 text-slate-500 group-hover:text-slate-300 transition-colors" />
+                <span className="text-[10px] font-bold text-slate-500 group-hover:text-slate-300 mt-1">متوقف</span>
+              </>
             )}
-            <Radio className={`w-4 h-4 text-sky-400 ${isRadarActive ? 'animate-spin drop-shadow-[0_0_8px_rgba(56,189,248,0.8)]' : 'opacity-40'}`} />
           </button>
-
-          <div>
-            <div className="flex items-center gap-2.5">
-              <h2 className="text-lg font-bold text-white">
-                الأجهزة المكتشفة على الشبكة
-              </h2>
-              <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 font-mono font-bold">
-                {filteredPeers.length}
-              </span>
-            </div>
-
-            <p className="text-xs text-slate-400 mt-0.5">
-              الأجهزة المتصلة بالشبكة وجاهزة لنقل واستقبال الملفات
-            </p>
-          </div>
         </div>
-      </div>
 
-      {/* Grid or Empty State */}
-      {filteredPeers.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {filteredPeers.map((peer) => (
-            <DeviceCard key={peer.id} peer={peer} />
-          ))}
-        </div>
-      ) : (
-        /* Empty Radar State */
-        <div className="relative overflow-hidden rounded-3xl glass-panel p-8 sm:p-12 text-center border border-slate-800/80">
-          {/* Radar Background Glow Animation */}
-          <div className="relative mx-auto w-40 h-40 mb-6 flex items-center justify-center">
-            <div className="absolute inset-0 rounded-full border border-sky-500/20 animate-ping-slow"></div>
-            <div className="absolute inset-4 rounded-full border border-brand-500/20 animate-ping-slow" style={{ animationDelay: '0.8s' }}></div>
-            <div className="absolute inset-8 rounded-full border border-sky-400/30"></div>
-            
-            <div className="relative z-10 w-20 h-20 rounded-full bg-slate-900 border border-slate-700 flex items-center justify-center shadow-xl shadow-sky-500/10">
-              <Radio className="w-9 h-9 text-brand-400 animate-pulse" />
-            </div>
-          </div>
-
-          <h3 className="text-lg font-bold text-white mb-2">
-            جاري البحث عن أجهزة على الشبكة المحلية...
+        {/* State Title and Interactive Hint */}
+        <div 
+          onClick={toggleRadar}
+          className="cursor-pointer inline-block transition-transform hover:scale-[1.02] active:scale-95"
+        >
+          <h3 className="text-base sm:text-lg font-bold text-white mb-1.5 flex items-center justify-center gap-2">
+            {isRadarActive ? (
+              <>
+                <span>جاري البحث عن أجهزة على الشبكة المحلية...</span>
+                <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+              </>
+            ) : (
+              <span className="text-slate-400">الرادار متوقف حالياً</span>
+            )}
           </h3>
-          <p className="text-xs sm:text-sm text-slate-400 max-w-md mx-auto mb-6 leading-relaxed">
-            تأكد من أن أجهزتك الأخرى متصلة بنفس شبكة الواي فاي وأن وضع الظهور لديها مفعّل.
-          </p>
 
-          {/* Instructions Box */}
-          <div className="mt-8 pt-6 border-t border-slate-800/80 grid grid-cols-1 sm:grid-cols-3 gap-4 text-right">
-            <div className="p-3 rounded-2xl bg-slate-900/40 border border-slate-800/50">
+          <p className="text-xs text-slate-400 font-medium hover:text-sky-300 transition-colors">
+            {isRadarActive 
+              ? 'انقر على الدائرة لإيقاف الرادار ⏸️' 
+              : 'انقر على الدائرة لتشغيل الرادار والبحث عن الأجهزة 📡'}
+          </p>
+        </div>
+
+        {/* Helper Guidance Boxes (when no devices discovered yet) */}
+        {filteredPeers.length === 0 && (
+          <div className="mt-8 pt-6 border-t border-slate-800/80 grid grid-cols-1 sm:grid-cols-3 gap-4 text-right animate-in fade-in duration-300">
+            <div className="p-3.5 rounded-2xl bg-slate-900/40 border border-slate-800/60 hover:border-slate-700/80 transition-colors">
               <div className="text-brand-400 font-bold text-xs mb-1">1. نفس الشبكة</div>
               <div className="text-[11px] text-slate-400">تأكد من اتصال الأجهزة بنفس راوتر الواي فاي.</div>
             </div>
-            <div className="p-3 rounded-2xl bg-slate-900/40 border border-slate-800/50">
+            <div className="p-3.5 rounded-2xl bg-slate-900/40 border border-slate-800/60 hover:border-slate-700/80 transition-colors">
               <div className="text-sky-400 font-bold text-xs mb-1">2. وضع الظهور</div>
               <div className="text-[11px] text-slate-400">تأكد من تفعيل زر "الجهاز مكشوف على الشبكة".</div>
             </div>
-            <div className="p-3 rounded-2xl bg-slate-900/40 border border-slate-800/50">
+            <div className="p-3.5 rounded-2xl bg-slate-900/40 border border-slate-800/60 hover:border-slate-700/80 transition-colors">
               <div className="text-purple-400 font-bold text-xs mb-1">3. هواتف الآيفون والأندرويد</div>
               <div className="text-[11px] text-slate-400">افتح الرابط في المتصفح دون الحاجة لتثبيت أي تطبيق.</div>
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* Discovered Active Devices Section (Appears Below the Radar) */}
+      {filteredPeers.length > 0 && (
+        <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div className="flex items-center justify-between mb-4 px-1">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
+              <h4 className="text-sm font-bold text-white">الأجهزة النشطة المتصلة الآن:</h4>
+            </div>
+            <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 font-mono font-bold">
+              {filteredPeers.length} {filteredPeers.length === 1 ? 'جهاز' : 'أجهزة'}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {filteredPeers.map((peer) => (
+              <DeviceCard key={peer.id} peer={peer} />
+            ))}
           </div>
         </div>
       )}
