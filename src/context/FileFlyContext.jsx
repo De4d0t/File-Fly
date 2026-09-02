@@ -251,18 +251,7 @@ export function FileFlyProvider({ children }) {
         setHistory((prev) => [transfer.historyItem, ...prev]);
       }
 
-      // If this device is a web client receiving files from host, automatically download to its downloads folder
-      if (!isHostMachine && activeTransferRef.current?.direction === 'incoming') {
-        const downloadUrl = `/api/transfer/download/${transfer.id}/0`;
-        const link = document.createElement('a');
-        link.href = downloadUrl;
-        link.download = transfer.files?.[0]?.name || transfer.historyItem?.firstFileName || 'file';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      }
-
-      // Keep completion card visible for 12 seconds so receiver can comfortably interact
+      // Keep completion card visible for 12 seconds so receiver can choose to Open or Download
       setTimeout(() => {
         setActiveTransfer((curr) => (curr?.status === 'completed' ? null : curr));
       }, 12000);
@@ -605,9 +594,9 @@ export function FileFlyProvider({ children }) {
         console.error('Failed to open file:', e);
       }
     } else {
-      // On web/mobile client: open the file directly or trigger download
+      // On web/mobile client: open/stream the file directly in browser media viewer
       if (transferId) {
-        window.open(`/api/transfer/download/${transferId}/0`, '_blank');
+        window.open(`/api/transfer/view/${transferId}/0`, '_blank');
       }
     }
   };

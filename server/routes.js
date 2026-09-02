@@ -245,6 +245,27 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
   });
 
   /**
+   * View / Stream a file directly in browser (for videos, audio, images, PDFs)
+   */
+  router.get('/transfer/view/:transferId/:fileIndex', (req, res) => {
+    const { transferId, fileIndex } = req.params;
+    const transfer = transferEngine.getTransfer(transferId);
+
+    let targetPath = transfer?.files?.[Number(fileIndex)]?.savedPath;
+    if (!targetPath) {
+      const historyItem = transferEngine.getHistory().find((h) => h.id === transferId);
+      targetPath = historyItem?.savedPath;
+    }
+
+    if (targetPath && fs.existsSync(targetPath)) {
+      res.setHeader('Content-Disposition', 'inline');
+      return res.sendFile(path.resolve(targetPath));
+    }
+
+    res.status(404).json({ error: 'File on disk not found' });
+  });
+
+  /**
    * Download a completed transfer file (for web/mobile clients)
    */
   router.get('/transfer/download/:transferId/:fileIndex', (req, res) => {
