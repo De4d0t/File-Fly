@@ -30,11 +30,11 @@ export default function DeviceGrid() {
   });
 
   return (
-    <div className="w-full space-y-6">
-      {/* Central Interactive Sonar Radar Widget */}
-      <div className="relative overflow-hidden rounded-3xl glass-panel p-8 sm:p-10 text-center border border-slate-800/80 shadow-2xl transition-all">
+    <div className="w-full">
+      {/* Main Radar & Discovered Devices Panel */}
+      <div className="relative overflow-hidden rounded-3xl glass-panel p-6 sm:p-10 text-center border border-slate-800/80 shadow-2xl transition-all">
         {/* Clickable Radar Scanner Center */}
-        <div className="relative mx-auto w-48 h-48 mb-5 flex items-center justify-center">
+        <div className="relative mx-auto w-44 h-44 mb-4 flex items-center justify-center">
           {/* Concentric Sonar Ripple Waves when Radar is Active */}
           {isRadarActive && (
             <>
@@ -85,7 +85,7 @@ export default function DeviceGrid() {
         {/* State Title and Interactive Hint */}
         <div 
           onClick={toggleRadar}
-          className="cursor-pointer inline-block transition-transform hover:scale-[1.02] active:scale-95"
+          className="cursor-pointer inline-block transition-transform hover:scale-[1.02] active:scale-95 mb-6"
         >
           <h3 className="text-base sm:text-lg font-bold text-white mb-1.5 flex items-center justify-center gap-2">
             {isRadarActive ? (
@@ -105,45 +105,46 @@ export default function DeviceGrid() {
           </p>
         </div>
 
-        {/* Helper Guidance Boxes (when no devices discovered yet) */}
-        {filteredPeers.length === 0 && (
-          <div className="mt-8 pt-6 border-t border-slate-800/80 grid grid-cols-1 sm:grid-cols-3 gap-4 text-right animate-in fade-in duration-300">
-            <div className="p-3.5 rounded-2xl bg-slate-900/40 border border-slate-800/60 hover:border-slate-700/80 transition-colors">
-              <div className="text-brand-400 font-bold text-xs mb-1">1. نفس الشبكة</div>
-              <div className="text-[11px] text-slate-400">تأكد من اتصال الأجهزة بنفس راوتر الواي فاي.</div>
-            </div>
-            <div className="p-3.5 rounded-2xl bg-slate-900/40 border border-slate-800/60 hover:border-slate-700/80 transition-colors">
-              <div className="text-sky-400 font-bold text-xs mb-1">2. وضع الظهور</div>
-              <div className="text-[11px] text-slate-400">تأكد من تفعيل زر "الجهاز مكشوف على الشبكة".</div>
-            </div>
-            <div className="p-3.5 rounded-2xl bg-slate-900/40 border border-slate-800/60 hover:border-slate-700/80 transition-colors">
-              <div className="text-purple-400 font-bold text-xs mb-1">3. هواتف الآيفون والأندرويد</div>
-              <div className="text-[11px] text-slate-400">افتح الرابط في المتصفح دون الحاجة لتثبيت أي تطبيق.</div>
-            </div>
-          </div>
-        )}
-      </div>
+        {/* Bottom Area: Shows Device Cards when discovered, or Guide Cards when empty */}
+        <div className="pt-6 border-t border-slate-800/80 text-right">
+          {filteredPeers.length > 0 ? (
+            /* Discovered Active Devices replacing the bottom cards */
+            <div className="animate-in fade-in slide-in-from-bottom-3 duration-300">
+              <div className="flex items-center justify-between mb-4 px-1">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
+                  <span className="text-sm font-bold text-white">الأجهزة المكتشفة والجاهزة للإرسال:</span>
+                </div>
+                <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 font-mono font-bold">
+                  {filteredPeers.length} {filteredPeers.length === 1 ? 'جهاز' : 'أجهزة'}
+                </span>
+              </div>
 
-      {/* Discovered Active Devices Section (Appears Below the Radar) */}
-      {filteredPeers.length > 0 && (
-        <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
-          <div className="flex items-center justify-between mb-4 px-1">
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
-              <h4 className="text-sm font-bold text-white">الأجهزة النشطة المتصلة الآن:</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredPeers.map((peer) => (
+                  <DeviceCard key={peer.id} peer={peer} />
+                ))}
+              </div>
             </div>
-            <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 font-mono font-bold">
-              {filteredPeers.length} {filteredPeers.length === 1 ? 'جهاز' : 'أجهزة'}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {filteredPeers.map((peer) => (
-              <DeviceCard key={peer.id} peer={peer} />
-            ))}
-          </div>
+          ) : (
+            /* 3 Guide Boxes when no devices */
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 animate-in fade-in duration-300">
+              <div className="p-3.5 rounded-2xl bg-slate-900/40 border border-slate-800/60 hover:border-slate-700/80 transition-colors">
+                <div className="text-brand-400 font-bold text-xs mb-1">1. نفس الشبكة</div>
+                <div className="text-[11px] text-slate-400">تأكد من اتصال الأجهزة بنفس راوتر الواي فاي.</div>
+              </div>
+              <div className="p-3.5 rounded-2xl bg-slate-900/40 border border-slate-800/60 hover:border-slate-700/80 transition-colors">
+                <div className="text-sky-400 font-bold text-xs mb-1">2. وضع الظهور</div>
+                <div className="text-[11px] text-slate-400">تأكد من تفعيل زر "الجهاز مكشوف على الشبكة".</div>
+              </div>
+              <div className="p-3.5 rounded-2xl bg-slate-900/40 border border-slate-800/60 hover:border-slate-700/80 transition-colors">
+                <div className="text-purple-400 font-bold text-xs mb-1">3. هواتف الآيفون والأندرويد</div>
+                <div className="text-[11px] text-slate-400">افتح الرابط في المتصفح دون الحاجة لتثبيت أي تطبيق.</div>
+              </div>
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
