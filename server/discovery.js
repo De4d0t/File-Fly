@@ -227,6 +227,14 @@ export class PeerDiscovery {
       return;
     }
 
+    // IP-level deduplication: If a peer with this SAME IP exists under a different ID
+    // (e.g. user opened PWA alongside browser or refreshed tab), remove the older ID!
+    for (const [existingId, existingPeer] of this.peers.entries()) {
+      if (existingPeer.ip === peer.ip && existingId !== peer.id) {
+        this.peers.delete(existingId);
+      }
+    }
+
     const existing = this.peers.get(peer.id);
     const hasChanged = !existing || existing.name !== peer.name || existing.ip !== peer.ip;
 
@@ -259,19 +267,27 @@ export class PeerDiscovery {
     const map = new Map();
     const hostIP = getPrimaryLocalIP();
 
-    // 1. Add remote peers (Strictly exclude self ID and host IP)
+    // 1. Deduplicate remote peers by IP (taking the most recently seen)
+    const ipMap = new Map();
     for (const p of this.peers.values()) {
       if (p.visible !== false && p.id !== this.config.id && p.ip !== hostIP && p.ip !== '127.0.0.1') {
-        map.set(p.id, {
-          id: p.id,
-          name: p.name,
-          ip: p.ip,
-          port: p.port,
-          os: p.os,
-          visible: true,
-          lastSeen: p.lastSeen,
-        });
+        const existing = ipMap.get(p.ip);
+        if (!existing || (p.lastSeen || 0) >= (existing.lastSeen || 0)) {
+          ipMap.set(p.ip, p);
+        }
       }
+    }
+
+    for (const p of ipMap.values()) {
+      map.set(p.id, {
+        id: p.id,
+        name: p.name,
+        ip: p.ip,
+        port: p.port,
+        os: p.os,
+        visible: true,
+        lastSeen: p.lastSeen,
+      });
     }
 
     // 2. Add the host machine exactly once if visible

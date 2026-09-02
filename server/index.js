@@ -74,11 +74,19 @@ app.use(express.urlencoded({ extended: true }));
 // API Routes
 app.use('/api', createRouter(config, discovery, transferEngine, PORT));
 
-// Serve Frontend (Vite build output)
+// Serve Static Assets & Frontend (Vite build output & public)
+const publicPath = path.join(__dirname, '..', 'public');
+if (fs.existsSync(publicPath)) {
+  app.use(express.static(publicPath));
+}
+
 const distPath = path.join(__dirname, '..', 'dist');
 if (fs.existsSync(distPath)) {
   app.use(express.static(distPath));
   app.get('*', (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     res.sendFile(path.join(distPath, 'index.html'));
   });
 }
@@ -128,7 +136,7 @@ wss.on('connection', (ws, req) => {
       if (type === 'REGISTER_PEER') {
         const clientMeta = socketClientMap.get(ws);
         const clientId = payload.id;
-        const clientName = payload.name || 'حاسوب / هاتف';
+        const clientName = payload.name || 'Device';
         const isVisible = payload.visible !== false;
         const clientOS = payload.os || 'windows';
 
@@ -139,13 +147,20 @@ wss.on('connection', (ws, req) => {
           clientMeta.os = clientOS;
         }
 
-        // Cancel any pending disconnect removal
+        // Cancel any pending disconnect removal for this clientId and IP
         if (clientId && pendingDisconnectTimers.has(clientId)) {
           clearTimeout(pendingDisconnectTimers.get(clientId));
           pendingDisconnectTimers.delete(clientId);
         }
 
         if (clientId && clientId !== config.id) {
+          // Remove any duplicate / ghost peers from the same physical IP
+          for (const [existingId, p] of discovery.peers.entries()) {
+            if (p.ip === rawClientIP && existingId !== clientId) {
+              discovery.peers.delete(existingId);
+            }
+          }
+
           if (isVisible) {
             discovery.addOrUpdatePeer({
               id: clientId,
@@ -298,9 +313,25 @@ function startRedirectServer(mainPort) {
   });
 
   redirectServer.listen(80, '0.0.0.0', () => {
-    console.log('[FileFly] ✅ fly.local (port 80) redirect active → fly.local:' + mainPort);
+    console.log('[FileFly] ✅ fly.local (port 80) redirect active → fly.local:' + PORT);
   });
 }
+
+// Forward any legacy shortcuts or PWAs targeting old dev port 5173 to PORT
+let legacyRedirectServer = null;
+try {
+  const legacyApp = express();
+  legacyApp.use((req, res) => {
+    res.redirect(302, `http://localhost:${PORT}${req.url}`);
+  });
+  legacyRedirectServer = http.createServer(legacyApp);
+  legacyRedirectServer.on('error', () => {
+    legacyRedirectServer = null;
+  });
+  legacyRedirectServer.listen(5173, '127.0.0.1', () => {
+    console.log('[FileFly] 🔄 Legacy 5173 forwarder active → localhost:' + PORT);
+  });
+} catch (_) {}
 
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
@@ -325,6 +356,7 @@ process.on('SIGINT', () => {
   discovery.stop();
   mdnsResponder.stop();
   if (redirectServer) redirectServer.close();
+  if (legacyRedirectServer) legacyRedirectServer.close();
   server.close(() => {
     process.exit(0);
   });
@@ -334,6 +366,7 @@ process.on('SIGTERM', () => {
   discovery.stop();
   mdnsResponder.stop();
   if (redirectServer) redirectServer.close();
+  if (legacyRedirectServer) legacyRedirectServer.close();
   server.close(() => {
     process.exit(0);
   });

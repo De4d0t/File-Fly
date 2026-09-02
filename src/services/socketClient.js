@@ -8,6 +8,23 @@ class SocketClient {
     this.listeners = new Map(); // eventType -> Set of callbacks
     this.reconnectTimer = null;
     this.isConnected = false;
+    this.listenVisibilityAndNetwork();
+  }
+
+  listenVisibilityAndNetwork() {
+    if (typeof window === 'undefined') return;
+
+    window.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+          this.connect();
+        }
+      }
+    });
+
+    window.addEventListener('online', () => {
+      this.connect();
+    });
   }
 
   connect() {
@@ -63,6 +80,20 @@ class SocketClient {
       this.reconnectTimer = null;
       this.connect();
     }, 2500);
+  }
+
+  reconnectNow() {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.ws) {
+      try {
+        this.ws.close();
+      } catch (_) {}
+      this.ws = null;
+    }
+    this.connect();
   }
 
   send(type, payload = {}) {

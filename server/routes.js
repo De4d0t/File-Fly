@@ -27,9 +27,13 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
         cb(null, targetDir);
       },
       filename: (req, file, cb) => {
+        let cleanName = file.originalname;
+        try {
+          cleanName = Buffer.from(file.originalname, 'latin1').toString('utf8');
+        } catch (e) {}
         const safeName = transferEngine.getSafeFilePath(
           config.downloadsDir,
-          file.originalname
+          cleanName
         );
         cb(null, path.basename(safeName));
       },
@@ -230,7 +234,14 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
    */
   router.post('/transfer/stream/:transferId/:fileIndex', (req, res) => {
     const { transferId, fileIndex } = req.params;
-    const originalFileName = decodeURIComponent(req.headers['x-file-name'] || `file_${fileIndex}`);
+    let originalFileName = `file_${fileIndex}`;
+    try {
+      originalFileName = req.headers['x-file-name']
+        ? decodeURIComponent(req.headers['x-file-name'])
+        : `file_${fileIndex}`;
+    } catch (e) {
+      originalFileName = req.headers['x-file-name'] || `file_${fileIndex}`;
+    }
     const transfer = transferEngine.getTransfer(transferId);
 
     if (!transfer) {
@@ -313,7 +324,7 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
   });
 
   /**
-   * Direct download for FileFly Portable Standalone Executable (.exe)
+   * Direct download for FileFly Desktop Application (if available) or redirect to PWA
    */
   router.get('/download-app/windows', (req, res) => {
     const searchDirs = [
@@ -325,18 +336,19 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
     for (const dir of searchDirs) {
       if (fs.existsSync(dir)) {
         const files = fs.readdirSync(dir);
-        // Prioritize portable single-file executable over setup installer
+        const zipFile = files.find((f) => f.toLowerCase().endsWith('.zip'));
         const portableFile = files.find((f) => (f.toLowerCase().includes('portable') || !f.toLowerCase().includes('setup')) && f.toLowerCase().endsWith('.exe') && !f.includes('.blockmap'));
         const fallbackExe = files.find((f) => f.toLowerCase().endsWith('.exe') && !f.includes('.blockmap'));
-        const targetExe = portableFile || fallbackExe;
+        const targetFile = portableFile || fallbackExe || zipFile;
 
-        if (targetExe) {
-          return res.download(path.join(dir, targetExe), 'FileFly.exe');
+        if (targetFile) {
+          return res.download(path.join(dir, targetFile), targetFile);
         }
       }
     }
 
-    res.status(404).json({ error: 'ملف التطبيق غير موجود حالياً' });
+    // Redirect to home with PWA install indicator
+    res.redirect('/?install=pwa');
   });
 
   /**
@@ -417,11 +429,10 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
       const osType = getDeviceOS();
       if (osType === 'windows') {
         const norm = path.normalize(targetPath);
-        // Start file in Windows default associated program
-        exec(`cmd.exe /c start "" "${norm}"`, (err) => {
+        const escaped = norm.replace(/'/g, "''");
+        exec(`powershell -NoProfile -Command "Start-Process -LiteralPath '${escaped}'"`, (err) => {
           if (err) {
-            const escaped = norm.replace(/'/g, "''");
-            exec(`powershell -NoProfile -Command "Start-Process -FilePath '${escaped}'"`);
+            exec(`cmd.exe /c start "" "${norm}"`);
           }
         });
       } else if (osType === 'mac') {

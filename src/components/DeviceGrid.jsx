@@ -1,5 +1,5 @@
 import React, { useMemo, useRef } from 'react';
-import { Power, Laptop, Smartphone, Monitor } from 'lucide-react';
+import { Power, Laptop, Smartphone, Monitor, Eye, EyeOff, Edit2 } from 'lucide-react';
 import { useFileFly } from '../context/FileFlyContext.jsx';
 import DeviceCard from './DeviceCard.jsx';
 
@@ -16,7 +16,7 @@ const SLOT_POSITIONS = [
 ];
 
 /* ── SVG Radar ── */
-function RadarSVG({ isActive, peers }) {
+function RadarSVG({ isActive, peers, myDevice, isVisible }) {
   const SIZE = 320;
   const CX = SIZE / 2;
   const CY = SIZE / 2;
@@ -29,7 +29,7 @@ function RadarSVG({ isActive, peers }) {
   return (
     <svg
       viewBox={`0 0 ${SIZE} ${SIZE}`}
-      className="radar-svg w-[250px] xs:w-[280px] sm:w-[320px] max-w-full aspect-square"
+      className="radar-svg w-[160px] xs:w-[185px] sm:w-[245px] max-w-full aspect-square"
       style={{ overflow: 'visible' }}
     >
       <defs>
@@ -62,6 +62,12 @@ function RadarSVG({ isActive, peers }) {
 
         {/* Green glow for discovered devices */}
         <filter id="greenGlow" x="-100%" y="-100%" width="300%" height="300%">
+          <feGaussianBlur stdDeviation="3.5" result="blur" />
+          <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+
+        {/* Cyan glow for current active device */}
+        <filter id="cyanGlow" x="-100%" y="-100%" width="300%" height="300%">
           <feGaussianBlur stdDeviation="3.5" result="blur" />
           <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
         </filter>
@@ -235,6 +241,53 @@ function RadarSVG({ isActive, peers }) {
         );
       })}
 
+      {/* ── Current Device Blip (Active when isVisible & isActive, completely hidden when isVisible is false) ── */}
+      {isActive && isVisible && (() => {
+        // Place current device at 12 o'clock (angle: -90 deg) on inner operational orbit (r: 0.48)
+        const myAngle = -90;
+        const myRad = (myAngle * Math.PI) / 180;
+        const myDist = R * 0.48;
+        const mx = CX + myDist * Math.cos(myRad);
+        const my = CY + myDist * Math.sin(myRad);
+
+        return (
+          <g filter="url(#cyanGlow)" className="radar-blip-group">
+            {/* Outer Cyan Ping Wave */}
+            <circle
+              cx={mx} cy={my}
+              r={13}
+              fill="none"
+              stroke="#38bdf8"
+              strokeWidth="1.5"
+              opacity="0.85"
+              className="blip-ping"
+            />
+            {/* Cyan glowing aura */}
+            <circle
+              cx={mx} cy={my}
+              r={7.5}
+              fill="#38bdf8"
+              opacity="0.3"
+            />
+            {/* Solid vibrant cyan core */}
+            <circle
+              cx={mx} cy={my}
+              r={5}
+              fill="#0ea5e9"
+              stroke="#bae6fd"
+              strokeWidth="1.2"
+              opacity="1"
+            />
+            {/* Center bright dot */}
+            <circle
+              cx={mx} cy={my}
+              r={1.8}
+              fill="#ffffff"
+            />
+          </g>
+        );
+      })()}
+
       {/* ── Outer bezel ring ── */}
       <circle
         cx={CX} cy={CY} r={R}
@@ -256,7 +309,17 @@ function RadarSVG({ isActive, peers }) {
 
 /* ── Main Component ── */
 export default function DeviceGrid() {
-  const { peers, myDevice, isRadarActive, toggleRadar } = useFileFly();
+  const { 
+    peers, 
+    myDevice, 
+    isRadarActive, 
+    toggleRadar, 
+    isHostMachine,
+    toggleVisibility,
+    setIsRenameModalOpen 
+  } = useFileFly();
+
+  const isVisible = myDevice?.visible !== false;
 
   const filteredPeers = useMemo(() => (peers || []).filter((peer) => {
     if (!peer?.id) return false;
@@ -281,9 +344,41 @@ export default function DeviceGrid() {
         <span className="dg-corner dg-corner--bl" />
         <span className="dg-corner dg-corner--br" />
 
-        {/* ── Top label row ── */}
+        {/* ── Top label row: Device Name & Visibility Toggle ── */}
         <div className="dg-top-row">
-          <span className="dg-top-label">RADAR SCANNER</span>
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/80 hover:bg-slate-900/95 border border-slate-700/60 hover:border-sky-500/40 shadow-lg shadow-black/40 backdrop-blur-md transition-all text-xs select-none">
+            {/* Device Identity Button (Edit Icon + Name) */}
+            <button
+              type="button"
+              onClick={() => setIsRenameModalOpen(true)}
+              className="flex items-center gap-1.5 text-white hover:text-sky-300 font-bold font-sans tracking-wide transition-colors group"
+              title="انقر لتعديل اسم جهازك"
+            >
+              <Edit2 className="w-3.5 h-3.5 text-sky-400 group-hover:scale-110 transition-transform shrink-0" />
+              <span className="truncate max-w-[140px] sm:max-w-[180px]">{myDevice?.name || 'جهازي'}</span>
+            </button>
+
+            {/* Subtle Divider */}
+            <span className="w-px h-3.5 bg-slate-700/70 shrink-0" />
+
+            {/* Visibility Toggle Icon Button */}
+            <button
+              type="button"
+              onClick={toggleVisibility}
+              className={`p-1 rounded-full transition-all flex items-center justify-center hover:scale-110 active:scale-95 ${
+                isVisible
+                  ? 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)] border border-emerald-500/30'
+                  : 'bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-slate-200 border border-slate-700/60'
+              }`}
+              title={isVisible ? 'الجهاز مكشوف على الشبكة (مرئي - انقر للإخفاء)' : 'وضع التخفي - مخفي (انقر للظهور)'}
+            >
+              {isVisible ? (
+                <Eye className="w-3.5 h-3.5 text-emerald-400" />
+              ) : (
+                <EyeOff className="w-3.5 h-3.5 text-slate-400" />
+              )}
+            </button>
+          </div>
         </div>
 
         {/* ── Radar + Button layout ── */}
@@ -291,7 +386,7 @@ export default function DeviceGrid() {
 
           {/* Radar SVG */}
           <div className={`dg-radar-wrap ${isRadarActive ? 'dg-radar-wrap--active' : ''}`}>
-            <RadarSVG isActive={isRadarActive} peers={filteredPeers} />
+            <RadarSVG isActive={isRadarActive} peers={filteredPeers} myDevice={myDevice} isVisible={isVisible} />
           </div>
 
           {/* Center power button — overlaid on radar center */}
@@ -312,12 +407,13 @@ export default function DeviceGrid() {
           </button>
         </div>
 
-        {/* ── Status bar ── */}
+        {/* ── Status bar (Sleek English ONLINE badge) ── */}
         <div className="dg-status-bar">
           {!isRadarActive ? (
             <span className="dg-status-text">الرادار متوقف</span>
           ) : (
-            <span className={`dg-freq-tag ${hasPeers ? 'border-emerald-500/30 text-emerald-400 bg-emerald-500/10' : ''}`}>
+            <span className={`dg-freq-tag flex items-center gap-1.5 ${hasPeers ? 'border-emerald-500/40 text-emerald-400 bg-emerald-500/10' : 'text-sky-400/80 border-sky-500/20 bg-sky-500/5'}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${hasPeers ? 'bg-emerald-400 shadow-sm shadow-emerald-400' : 'bg-sky-400 animate-pulse'}`} />
               {filteredPeers.length} ONLINE
             </span>
           )}
@@ -325,15 +421,20 @@ export default function DeviceGrid() {
 
       </div>
 
+      {/* ── Subtle Quick Connect Hint (Only on host PC when radar active and no peers yet) ── */}
+      {!hasPeers && isRadarActive && isHostMachine && (
+        <div className="flex items-center justify-center pt-2 animate-in fade-in duration-300">
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-slate-900/40 border border-slate-800/60 text-slate-400 text-xs shadow-sm">
+            <span className="w-1.5 h-1.5 rounded-full bg-sky-400/80" />
+            <span>امسح رمز الـ QR من الأعلى لربط هاتفك في ثوانٍ</span>
+          </div>
+        </div>
+      )}
+
       {/* ── Discovered Devices ── */}
       {hasPeers && (
         <div className="dg-devices">
-          <div className="dg-devices__header">
-            <span className="dg-devices__dot" />
-            <span className="dg-devices__title">الأجهزة المكتشفة</span>
-            <span className="dg-devices__count">{filteredPeers.length}</span>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
             {filteredPeers.map((peer) => (
               <DeviceCard key={peer.id} peer={peer} />
             ))}

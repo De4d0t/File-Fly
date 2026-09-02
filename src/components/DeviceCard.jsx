@@ -95,11 +95,12 @@ export default function DeviceCard({ peer }) {
 
   return (
     <div
+      dir="ltr"
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className={`relative group rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 transition-all duration-200 border text-right ${
+      className={`relative group rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 transition-all duration-200 border text-left ${
         isDragOver
           ? 'bg-sky-500/15 border-sky-400 shadow-xl scale-[1.01]'
           : 'bg-slate-900/60 border-slate-800 hover:border-slate-700 hover:bg-slate-900/80 shadow-lg'
@@ -118,7 +119,7 @@ export default function DeviceCard({ peer }) {
       {isDragOver && (
         <div className="absolute inset-0 z-20 pointer-events-none flex flex-col items-center justify-center bg-slate-950/90 rounded-2xl sm:rounded-3xl border-2 border-dashed border-sky-400 text-sky-400 p-4">
           <UploadCloud className="w-10 h-10 mb-2 animate-bounce text-sky-400" />
-          <p className="text-sm font-bold text-white">أفلت الملفات للإرسال إلى</p>
+          <p className="text-sm font-bold text-white">Drop files to send to</p>
           <p className="text-xs font-semibold text-sky-400 mt-0.5">{peer.name}</p>
         </div>
       )}
@@ -145,19 +146,22 @@ export default function DeviceCard({ peer }) {
           </div>
         </div>
 
-        {/* Online Indicator */}
-        <span className="w-2 h-2 rounded-full bg-emerald-400 mt-2 shrink-0"></span>
+        {/* Online Indicator with pulsing ring */}
+        <span className="relative flex h-2 w-2 mt-2 shrink-0">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+        </span>
       </div>
 
       {/* Direct Drop / Pick Button */}
       <button
         type="button"
         onClick={() => fileInputRef.current?.click()}
-        className="w-full rounded-xl sm:rounded-2xl py-2.5 sm:py-3.5 px-3 border border-dashed border-slate-800 hover:border-sky-500/50 bg-slate-950/40 hover:bg-slate-800/40 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98]"
+        className="w-full rounded-xl sm:rounded-2xl py-2.5 sm:py-3 px-3 border border-dashed border-sky-500/30 hover:border-sky-400 bg-sky-500/5 hover:bg-sky-500/15 text-sky-300 hover:text-white transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98] group/btn shadow-sm"
       >
-        <UploadCloud className="w-4 h-4 text-sky-400 shrink-0" />
-        <span className="text-xs font-semibold text-slate-300">
-          اختيار ملفات للإرسال
+        <UploadCloud className="w-4 h-4 text-sky-400 group-hover/btn:-translate-y-0.5 transition-transform shrink-0" />
+        <span className="text-xs font-bold text-slate-200 group-hover/btn:text-white">
+          Choose Files to Send
         </span>
       </button>
     </div>

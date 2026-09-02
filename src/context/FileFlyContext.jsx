@@ -1,8 +1,16 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { socketService } from '../services/socketClient.js';
 import { requestTransferToPeer, uploadFilesToPeer, checkTransferApproval } from '../services/fileSender.js';
-import { playTransferRequestSound, playSuccessSound, playDeclinedSound } from '../utils/soundEffects.js';
-import { generateUUID } from '../utils/formatters.js';
+import { 
+  playTransferRequestSound, 
+  playTransferAcceptedSound,
+  playSuccessSound, 
+  playDeclinedSound,
+  playButtonClickSound,
+  requestNotificationPermission,
+  showSystemNotification 
+} from '../utils/soundEffects.js';
+import { formatBytes, generateUUID } from '../utils/formatters.js';
 
 const FileFlyContext = createContext(null);
 
@@ -23,25 +31,84 @@ export function FileFlyProvider({ children }) {
     return 'browser';
   };
 
-  const getClientDefaultName = () => {
-    const os = getClientOS();
-    if (os === 'ios') return 'آيفون';
-    if (os === 'android') return 'هاتف أندرويد';
-    if (os === 'mac') return 'ماك بوك';
-    if (os === 'windows') return 'لابتوب 2 (Windows)';
-    return 'جهاز متصل';
+  const getClientBrandInfo = () => {
+    const ua = typeof navigator !== 'undefined' ? (navigator.userAgent || '') : '';
+
+    if (/ipad/i.test(ua)) return { os: 'ios', label: 'iPad' };
+    if (/iphone|ipod/i.test(ua)) return { os: 'ios', label: 'iPhone' };
+
+    if (/android/i.test(ua)) {
+      if (/samsung|sm-[a-z0-9]+/i.test(ua)) return { os: 'android', label: 'Samsung' };
+      if (/redmi/i.test(ua)) return { os: 'android', label: 'Redmi' };
+      if (/xiaomi|poco/i.test(ua)) return { os: 'android', label: 'Xiaomi' };
+      if (/pixel/i.test(ua)) return { os: 'android', label: 'Pixel' };
+      if (/huawei/i.test(ua)) return { os: 'android', label: 'Huawei' };
+      if (/honor/i.test(ua)) return { os: 'android', label: 'Honor' };
+      if (/oppo/i.test(ua)) return { os: 'android', label: 'OPPO' };
+      if (/vivo/i.test(ua)) return { os: 'android', label: 'vivo' };
+      if (/oneplus/i.test(ua)) return { os: 'android', label: 'OnePlus' };
+      if (/realme/i.test(ua)) return { os: 'android', label: 'Realme' };
+      return { os: 'android', label: 'Android' };
+    }
+
+    if (/mac/i.test(ua)) return { os: 'mac', label: 'Mac' };
+    if (/win/i.test(ua)) return { os: 'windows', label: 'PC' };
+    if (/linux/i.test(ua)) return { os: 'linux', label: 'Linux' };
+
+    return { os: 'browser', label: 'Device' };
+  };
+
+  const getClientDefaultName = (clientId) => {
+    const brand = getClientBrandInfo();
+    const shortCode = (clientId ? clientId.replace(/[^a-zA-Z0-9]/g, '').slice(-4) : Math.random().toString(36).slice(-4)).toUpperCase();
+    return `${brand.label}-${shortCode}`;
+  };
+
+  /**
+   * Cleans long generic Windows hostnames (e.g. DESKTOP-8K2Q1M9 (Windows) -> PC-8K2Q)
+   */
+  const shortenDeviceName = (rawName) => {
+    if (!rawName) return 'PC';
+    let name = rawName.trim().replace(/\s*\(Windows\)\s*$/i, '');
+    if (name === 'main computer' || name === 'جهازي') return 'PC';
+    if (/^(DESKTOP|LAPTOP)-([A-Z0-9]{3,4})[A-Z0-9]*$/i.test(name)) {
+      const match = name.match(/^(DESKTOP|LAPTOP)-([A-Z0-9]{3,4})/i);
+      return `PC-${match[2]}`;
+    }
+    return name;
   };
 
   // Helper to load client settings safely from localStorage
   const getInitialClientIdentity = () => {
     if (typeof window === 'undefined') {
-      return { id: 'temp-id', name: isHostMachine ? 'main computer' : 'جهازي', visible: true };
+      return { id: 'temp-id', name: isHostMachine ? 'PC' : 'My Device', visible: true };
     }
     const id = localStorage.getItem('filefly_device_id') || generateUUID();
     localStorage.setItem('filefly_device_id', id);
 
-    const savedName = localStorage.getItem('filefly_device_name');
-    const name = savedName || (isHostMachine ? 'main computer' : getClientDefaultName());
+    let savedName = localStorage.getItem('filefly_device_name');
+    
+    // Automatically upgrade generic legacy names or previous Arabic names to clean English names
+    const hasArabic = /[\u0600-\u06FF]/.test(savedName || '');
+    const isGenericLegacy = !savedName || hasArabic ||
+      (!isHostMachine && (savedName === 'PC' || savedName === 'main computer' || savedName === 'Device'));
+
+    if (savedName && !isGenericLegacy) {
+      const cleanName = shortenDeviceName(savedName);
+      if (cleanName !== savedName) {
+        savedName = cleanName;
+        localStorage.setItem('filefly_device_name', cleanName);
+      }
+    }
+
+    const name = (!isHostMachine && isGenericLegacy)
+      ? getClientDefaultName(id)
+      : (savedName || (isHostMachine ? 'PC' : getClientDefaultName(id)));
+
+    if (name && (!savedName || isGenericLegacy)) {
+      localStorage.setItem('filefly_device_name', name);
+    }
+
     const visible = localStorage.getItem('filefly_device_visible') !== 'false';
 
     return { id, name, visible };
@@ -80,6 +147,53 @@ export function FileFlyProvider({ children }) {
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
+  const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
+
+  // PWA Installation state
+  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState(null);
+  const [isAppInstalled, setIsAppInstalled] = useState(
+    typeof window !== 'undefined' &&
+    (Boolean(window.fileflyDesktop) || window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true)
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      setDeferredInstallPrompt(e);
+    };
+
+    const handleAppInstalled = () => {
+      setIsAppInstalled(true);
+      setDeferredInstallPrompt(null);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    window.addEventListener('appinstalled', handleAppInstalled);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, []);
+
+  const installPwaApp = async () => {
+    if (deferredInstallPrompt) {
+      try {
+        deferredInstallPrompt.prompt();
+        const choice = await deferredInstallPrompt.userChoice;
+        if (choice && choice.outcome === 'accepted') {
+          setIsAppInstalled(true);
+          setDeferredInstallPrompt(null);
+          return true;
+        }
+      } catch (err) {
+        console.warn('[FileFly PWA] Prompt failed:', err);
+      }
+    }
+    return false;
+  };
 
   // Active XHR upload controller reference
   const uploadControllerRef = useRef(null);
@@ -127,12 +241,13 @@ export function FileFlyProvider({ children }) {
       );
 
       if (isHost && host) {
-        setMyDevice(host);
-        if (typeof window !== 'undefined' && host.name) {
-          localStorage.setItem('filefly_device_name', host.name);
+        const cleanHost = { ...host, name: shortenDeviceName(host.name) };
+        setMyDevice(cleanHost);
+        if (typeof window !== 'undefined' && cleanHost.name) {
+          localStorage.setItem('filefly_device_name', cleanHost.name);
         }
         if (data.peers) {
-          setPeers(data.peers.filter((p) => p.id !== host.id));
+          setPeers(processPeersList(data.peers));
         }
       } else {
         // Remote client (Laptop 2 or Phone)
@@ -158,30 +273,48 @@ export function FileFlyProvider({ children }) {
           os: clientOS,
         });
 
-        // Set peers: filter out self
-        const allFiltered = (data.peers || []).filter((p) => p.id !== clientIdentity.id);
-        setPeers(allFiltered);
+        // Set peers: filter out self and deduplicate
+        if (data.peers) {
+          setPeers(processPeersList(data.peers));
+        }
       }
 
       if (data.history) setHistory(data.history);
     };
 
-    const unsubInitEvent = socketService.on('INIT_STATE', unsubInit);
-
-    const unsubPeers = socketService.on('PEERS_UPDATE', (peersList) => {
+    const processPeersList = (rawPeers) => {
       const currentMyDevice = myDeviceRef.current;
       const savedClientId = typeof window !== 'undefined' ? localStorage.getItem('filefly_device_id') : null;
       const host = hostDeviceRef.current;
 
-      const filtered = (peersList || []).filter((p) => {
+      const filtered = (rawPeers || []).filter((p) => {
         if (!p || !p.id) return false;
         if (currentMyDevice?.id && p.id === currentMyDevice.id) return false;
         if (savedClientId && p.id === savedClientId) return false;
+        if (!currentMyDevice?.isHost && currentMyDevice?.ip && p.ip === currentMyDevice.ip) return false;
         if (currentMyDevice?.isHost && (p.isHost || (host && p.id === host.id))) return false;
         return true;
       });
 
-      setPeers(filtered);
+      // Strict IP deduplication: One IP address belongs to one physical device
+      const ipMap = new Map();
+      for (const peer of filtered) {
+        const existing = ipMap.get(peer.ip);
+        if (!existing || (peer.lastSeen || 0) >= (existing.lastSeen || 0)) {
+          ipMap.set(peer.ip, peer);
+        }
+      }
+
+      return Array.from(ipMap.values()).map((p) => ({
+        ...p,
+        name: shortenDeviceName(p.name),
+      }));
+    };
+
+    const unsubInitEvent = socketService.on('INIT_STATE', unsubInit);
+
+    const unsubPeers = socketService.on('PEERS_UPDATE', (peersList) => {
+      setPeers(processPeersList(peersList));
     });
 
     const unsubScanStatus = socketService.on('SCAN_STATUS', (status) => {
@@ -199,8 +332,19 @@ export function FileFlyProvider({ children }) {
     const unsubRequest = socketService.on('TRANSFER_REQUEST', (transfer) => {
       const currentId = myDeviceRef.current?.id;
 
-      // STRICT SAFETY CHECK: If I am the sender, DO NOT show incoming prompt to myself
+      // 1. STRICT SAFETY CHECK: If I am the sender, DO NOT show incoming prompt to myself
       if (transfer.sender?.id && currentId && transfer.sender.id === currentId) {
+        return;
+      }
+
+      // 2. STRICT RECIPIENT CHECK: Verify that I am indeed the intended recipient!
+      const recipientId = transfer.recipient?.id;
+      const isTargetedToMe = (
+        (recipientId && currentId && recipientId === currentId) ||
+        (isHostMachine && (recipientId === 'host' || recipientId === hostDeviceRef.current?.id || !recipientId))
+      );
+
+      if (!isTargetedToMe) {
         return;
       }
 
@@ -208,16 +352,28 @@ export function FileFlyProvider({ children }) {
       setIsQrModalOpen(false);
       setIsHistoryModalOpen(false);
       setIsRenameModalOpen(false);
+      setIsInstallModalOpen(false);
 
       // Set pending request to display TransferModal immediately
       setPendingIncomingRequest(transfer);
       playTransferRequestSound();
 
-      // Show native desktop notification if available
+      // Show browser system notification (Windows, Mac, Android)
+      const senderName = transfer.sender?.name || 'جهاز متصل';
+      const fileCount = transfer.files?.length || 1;
+      const sizeStr = formatBytes(transfer.totalBytes || 0);
+
+      showSystemNotification(`طلب استلام ملف جديد من ${senderName}`, {
+        body: `يرغب في إرسال ${fileCount} ملف (${sizeStr}). انقر هنا للقبول أو الرفض.`,
+        tag: 'filefly-transfer',
+        renotify: true,
+      });
+
+      // Show native desktop notification if running in Electron
       if (window.fileflyDesktop?.showNotification) {
         window.fileflyDesktop.showNotification(
           'طلب استلام ملف جديد - FileFly',
-          `الجهاز ${transfer.sender?.name || 'مجهول'} يرغب في إرسال ${transfer.files?.length || 1} ملف.`
+          `الجهاز ${senderName} يرغب في إرسال ${fileCount} ملف (${sizeStr}).`
         );
       }
     });
@@ -258,28 +414,15 @@ export function FileFlyProvider({ children }) {
         const firstFileName = transfer.historyItem?.firstFileName || transfer.firstFileName || prev?.firstFileName || 'ملف';
         const isIncoming = prev?.direction === 'incoming' || transfer.direction === 'incoming';
 
-        // Auto-download file directly into mobile device downloads folder
-        if (!isHostMachine && isIncoming && id) {
-          try {
-            const a = document.createElement('a');
-            a.href = `/api/transfer/download/${id}/0`;
-            a.download = firstFileName;
-            document.body.appendChild(a);
-            a.click();
-            setTimeout(() => {
-              if (document.body.contains(a)) document.body.removeChild(a);
-            }, 500);
-          } catch (e) {
-            console.error('Auto download error:', e);
-          }
-        }
+        // Keep completed transfer state for user interaction without automatically opening the file
+        const resolvedCount = transfer.files?.length || transfer.historyItem?.filesCount || prev?.filesCount || 1;
 
         if (!prev || (prev.id && prev.id !== transfer.id)) {
           return {
             id,
             direction: isIncoming ? 'incoming' : 'outgoing',
-            partnerName: 'جهاز',
-            filesCount: 1,
+            partnerName: transfer.sender?.name || prev?.partnerName || 'جهاز',
+            filesCount: resolvedCount,
             firstFileName,
             totalBytes: transfer.totalBytes || 0,
             bytesTransferred: transfer.totalBytes || 0,
@@ -287,7 +430,20 @@ export function FileFlyProvider({ children }) {
             status: 'completed',
           };
         }
-        return { ...prev, status: 'completed', percentage: 100, bytesTransferred: prev.totalBytes };
+        return { 
+          ...prev, 
+          status: 'completed', 
+          percentage: 100, 
+          bytesTransferred: prev.totalBytes,
+          filesCount: resolvedCount,
+        };
+      });
+
+      // Show system notification for completion
+      const firstFileName = transfer.historyItem?.firstFileName || transfer.firstFileName || 'الملف';
+      showSystemNotification('اكتمل نقل الملف بنجاح! 🎉', {
+        body: `تم استلام ${firstFileName} بنجاح عبر FileFly.`,
+        tag: 'filefly-transfer',
       });
 
       if (transfer.historyItem) {
@@ -312,10 +468,16 @@ export function FileFlyProvider({ children }) {
         };
       });
 
+      const partner = transfer.recipient?.name || 'المستلم';
+      showSystemNotification('تم رفض طلب النقل ❌', {
+        body: `قام ${partner} برفض طلب نقل الملف.`,
+        tag: 'filefly-transfer',
+      });
+
       if (window.fileflyDesktop?.showNotification) {
         window.fileflyDesktop.showNotification(
           'تم رفض طلب النقل - FileFly',
-          `قام ${transfer.recipient?.name || 'المستلم'} برفض طلب نقل الملف.`
+          `قام ${partner} برفض طلب نقل الملف.`
         );
       }
 
@@ -701,9 +863,14 @@ export function FileFlyProvider({ children }) {
         isQrModalOpen,
         isHistoryModalOpen,
         isRenameModalOpen,
+        isInstallModalOpen,
         setIsQrModalOpen,
         setIsHistoryModalOpen,
         setIsRenameModalOpen,
+        setIsInstallModalOpen,
+        deferredInstallPrompt,
+        isAppInstalled,
+        installPwaApp,
         toggleVisibility,
         updateDeviceName,
         refreshPeers,
@@ -712,6 +879,7 @@ export function FileFlyProvider({ children }) {
         respondToIncomingRequest,
         sendFilesToDevice,
         cancelActiveTransfer,
+        reconnectSocket: () => socketService.reconnectNow(),
       }}
     >
       {children}

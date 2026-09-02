@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   QrCode, 
   X, 
@@ -6,8 +6,10 @@ import {
   Check, 
   Wifi, 
   CheckCircle2,
-  ExternalLink
+  ExternalLink,
+  RotateCw
 } from 'lucide-react';
+import QRCode from 'qrcode';
 import { useFileFly } from '../context/FileFlyContext.jsx';
 
 export default function QrCodeModal() {
@@ -19,22 +21,68 @@ export default function QrCodeModal() {
   
   const initialPeersCountRef = useRef(peers.length);
 
+  const generateClientQR = async (url) => {
+    try {
+      return await QRCode.toDataURL(url, {
+        margin: 2,
+        width: 280,
+        color: {
+          dark: '#0f172a',
+          light: '#ffffff',
+        },
+      });
+    } catch (err) {
+      console.warn('[QR Client Gen Warning]:', err);
+      return null;
+    }
+  };
+
+  const loadQrCode = useCallback(async () => {
+    setLoading(true);
+    const port = myDevice.port || 53316;
+    const hostIp = (myDevice.ip && myDevice.ip !== 'localhost' && myDevice.ip !== '127.0.0.1')
+      ? myDevice.ip
+      : (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1')
+        ? window.location.hostname
+        : '127.0.0.1';
+
+    let targetUrl = `http://${hostIp}:${port}`;
+
+    try {
+      const res = await fetch('/api/qr');
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.qrDataUrl) {
+          setQrData(data);
+          setLoading(false);
+          return;
+        } else if (data && data.url) {
+          targetUrl = data.url;
+        }
+      }
+    } catch (fetchErr) {
+      console.warn('[QR] Server fetch unavailable, generating locally:', fetchErr);
+    }
+
+    // Fallback: Instant client-side QR generation
+    const localDataUrl = await generateClientQR(targetUrl);
+    if (localDataUrl) {
+      setQrData({
+        url: targetUrl,
+        qrDataUrl: localDataUrl,
+        port,
+      });
+    }
+    setLoading(false);
+  }, [myDevice.ip, myDevice.port]);
+
   useEffect(() => {
     if (isQrModalOpen) {
       initialPeersCountRef.current = peers.length;
       setJustConnected(false);
-      setLoading(true);
-      fetch('/api/qr')
-        .then((res) => res.json())
-        .then((data) => {
-          setQrData(data);
-          setLoading(false);
-        })
-        .catch(() => {
-          setLoading(false);
-        });
+      loadQrCode();
     }
-  }, [isQrModalOpen]);
+  }, [isQrModalOpen, loadQrCode]);
 
   // Automatically close modal when a new device connects
   useEffect(() => {
@@ -114,8 +162,16 @@ export default function QrCodeModal() {
               className="w-44 h-44 xs:w-48 xs:h-48 sm:w-52 sm:h-52 rounded-xl sm:rounded-2xl"
             />
           ) : (
-            <div className="w-44 h-44 xs:w-48 xs:h-48 sm:w-52 sm:h-52 flex items-center justify-center text-slate-700 text-xs">
-              تعذر تحميل الباركود
+            <div className="w-44 h-44 xs:w-48 xs:h-48 sm:w-52 sm:h-52 flex flex-col items-center justify-center text-slate-700 text-xs gap-2">
+              <span>تعذر تحميل الباركود</span>
+              <button
+                type="button"
+                onClick={loadQrCode}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 text-sky-400 hover:text-white hover:bg-slate-800 text-xs font-semibold transition-colors"
+              >
+                <RotateCw className="w-3.5 h-3.5" />
+                <span>إعادة المحاولة</span>
+              </button>
             </div>
           )}
         </div>

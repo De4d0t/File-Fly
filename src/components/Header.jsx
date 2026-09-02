@@ -3,38 +3,69 @@ import {
   Zap, 
   QrCode, 
   FolderOpen, 
-  RefreshCw, 
-  Edit3, 
   Minus, 
-  Square, 
+  Square,
   X,
-  Eye,
-  EyeOff,
-  Radio,
+  DownloadCloud,
+  Apple,
   Laptop,
-  Smartphone,
-  DownloadCloud
+  Smartphone
 } from 'lucide-react';
 import { useFileFly } from '../context/FileFlyContext.jsx';
 
 export default function Header() {
   const { 
-    myDevice, 
-    isOnline, 
     isHostMachine,
-    isMobileClient,
-    isScanning,
-    isRadarActive,
-    toggleRadar,
-    toggleVisibility,
     setIsQrModalOpen, 
-    setIsRenameModalOpen, 
-    refreshPeers, 
+    setIsInstallModalOpen,
+    deferredInstallPrompt,
+    isAppInstalled,
+    installPwaApp,
     openDownloadsFolder 
   } = useFileFly();
 
   const isDesktop = typeof window !== 'undefined' && Boolean(window.fileflyDesktop);
-  const isVisible = myDevice?.visible;
+
+  const getInstallButtonInfo = () => {
+    if (typeof navigator === 'undefined') return { label: 'تثبيت التطبيق', shortLabel: 'تثبيت', icon: DownloadCloud };
+    const ua = navigator.userAgent || '';
+    if (/iPhone|iPad|iPod/i.test(ua)) {
+      return { 
+        label: 'تثبيت على الآيفون', 
+        shortLabel: 'تثبيت للآيفون',
+        icon: Apple,
+        platform: 'ios' 
+      };
+    }
+    if (/Android/i.test(ua)) {
+      return { 
+        label: 'تثبيت على الأندرويد', 
+        shortLabel: 'تثبيت للأندرويد',
+        icon: Smartphone, 
+        platform: 'android' 
+      };
+    }
+    return { 
+      label: 'تثبيت على الكمبيوتر', 
+      shortLabel: 'تثبيت للكمبيوتر',
+      icon: Laptop, 
+      platform: 'desktop' 
+    };
+  };
+
+  const installInfo = getInstallButtonInfo();
+  const InstallIcon = installInfo.icon;
+
+  const handleInstallClick = async () => {
+    if (deferredInstallPrompt) {
+      const installed = await installPwaApp();
+      if (!installed) {
+        setIsInstallModalOpen(true);
+      }
+    } else {
+      setIsInstallModalOpen(true);
+    }
+  };
 
   const handleMinimize = () => window.fileflyDesktop?.minimizeWindow();
   const handleMaximize = () => window.fileflyDesktop?.maximizeWindow();
@@ -44,11 +75,11 @@ export default function Header() {
     <header className="w-full">
       {/* Desktop Window Controls Bar (for Electron) */}
       {isDesktop && (
-        <div className="w-full flex items-center justify-between px-4 py-1.5 bg-slate-950/80 border-b border-slate-800/40 text-xs text-slate-400 app-drag-region">
+        <div className="w-full flex items-center justify-between px-4 py-1 bg-slate-950/90 border-b border-slate-800/40 text-xs text-slate-400 app-drag-region" dir="ltr">
           <div className="flex items-center gap-2 app-no-drag">
-            <Zap className="w-3.5 h-3.5 text-brand-400 fill-brand-400" />
-            <span className="font-semibold text-slate-300">FileFly Desktop</span>
-            <span className="text-[10px] text-slate-500">v1.0</span>
+            <Zap className="w-3.5 h-3.5 text-sky-400 fill-sky-400" />
+            <span className="font-semibold text-slate-200">FileFly Desktop</span>
+            <span className="text-[10px] text-slate-500 font-mono">v1.0</span>
           </div>
 
           <div className="flex items-center gap-1 app-no-drag">
@@ -62,9 +93,9 @@ export default function Header() {
             <button
               onClick={handleMaximize}
               className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-white transition-colors"
-              title="تكبير"
+              title="تكبير / استعادة"
             >
-              <Square className="w-3.5 h-3.5" />
+              <Square className="w-3 h-3" />
             </button>
             <button
               onClick={handleClose}
@@ -77,96 +108,68 @@ export default function Header() {
         </div>
       )}
 
-      {/* Main Rounded Navbar (Exact Same Width as Radar Box) */}
-      <div className="max-w-5xl w-full mx-auto px-3 sm:px-6 pt-3 sm:pt-6">
-        <div className="rounded-2xl sm:rounded-3xl glass-panel border border-slate-800/80 shadow-xl px-3.5 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between gap-2 sm:gap-4">
+      {/* Main Rounded Navbar */}
+      <div className="max-w-5xl w-full mx-auto px-3 sm:px-6 pt-2 sm:pt-3">
+        <div 
+          className="rounded-2xl sm:rounded-3xl glass-panel border border-slate-800/80 shadow-xl px-4 sm:px-5 py-2 sm:py-2.5 flex items-center justify-between gap-3 sm:gap-4"
+          dir="ltr"
+        >
           
-          {/* Logo & Device Identity */}
-          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-            <div className="relative flex items-center justify-center w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-gradient-to-tr from-brand-600 via-brand-500 to-sky-400 p-0.5 shadow-lg shadow-brand-500/20 shrink-0">
-              <div className="w-full h-full bg-slate-950 rounded-[10px] sm:rounded-[14px] flex items-center justify-center">
-                <Zap className="w-5 h-5 sm:w-6 sm:h-6 text-brand-400 fill-brand-400 animate-pulse-slow" />
+          {/* Left Side: Upgraded Brand Logo & Stylized Name */}
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 select-none">
+            {/* Aerodynamic Gradient Logo Avatar */}
+            <div className="relative flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-sky-500 via-sky-400 to-blue-600 p-[1.5px] shadow-lg shadow-sky-500/35 shrink-0 group transition-transform hover:scale-105 active:scale-95">
+              <div className="w-full h-full bg-gradient-to-b from-sky-400 to-blue-600 rounded-[9px] flex items-center justify-center shadow-inner relative overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <Zap className="w-4 h-4 sm:w-5 sm:h-5 text-white fill-white drop-shadow-md group-hover:rotate-6 transition-transform duration-300" />
               </div>
             </div>
 
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <h1 className="text-base sm:text-lg font-bold tracking-tight text-white">
-                  FileFly
-                </h1>
-              </div>
-
-              {/* Device Name with Rename Button */}
-              <div className="flex items-center gap-1 mt-0.5">
-                <span className="text-[11px] sm:text-xs text-slate-400 flex items-center gap-1 shrink-0">
-                  {isMobileClient ? (
-                    <Smartphone className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-slate-400" />
-                  ) : (
-                    <Laptop className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-slate-400" />
-                  )}
-                  جهازك:
-                </span>
-                <button
-                  onClick={() => setIsRenameModalOpen(true)}
-                  className="group flex items-center gap-1 text-[11px] sm:text-xs font-semibold text-sky-400 hover:text-sky-300 transition-colors truncate"
-                  title="انقر لتغيير اسم الجهاز"
-                >
-                  <span className="truncate max-w-[85px] xs:max-w-[120px] sm:max-w-[180px]">{myDevice?.name || 'جهازي'}</span>
-                  <Edit3 className="w-3 h-3 opacity-60 group-hover:opacity-100 transition-opacity shrink-0" />
-                </button>
-              </div>
+            {/* Distinctive Stylized Stacked Brand Typography */}
+            <div className="flex flex-col justify-center select-none leading-none">
+              <span className="text-[14px] sm:text-[16px] font-black tracking-wider text-white uppercase font-sans leading-none">
+                FILE
+              </span>
+              <span className="text-[14px] sm:text-[16px] font-black tracking-wider uppercase text-transparent bg-clip-text bg-gradient-to-r from-sky-400 via-cyan-300 to-teal-300 drop-shadow-[0_0_12px_rgba(56,189,248,0.5)] leading-none mt-0.5 sm:mt-1">
+                FLY
+              </span>
             </div>
           </div>
 
-          {/* Unified Glass Action Toolbar */}
-          <div className="flex items-center gap-1 sm:gap-1.5 p-1 rounded-xl sm:rounded-2xl bg-slate-900/60 border border-slate-800 shrink-0">
-            {/* Visibility Toggle Icon Button */}
-            <button
-              onClick={toggleVisibility}
-              className={`p-1.5 sm:p-2 rounded-lg sm:rounded-xl border transition-all flex items-center justify-center relative hover:scale-105 active:scale-95 ${
-                isVisible
-                  ? 'bg-emerald-500/15 hover:bg-emerald-500/25 border-emerald-500/40 text-emerald-400 glow-green'
-                  : 'bg-slate-800/80 hover:bg-slate-700 border-slate-700/80 text-slate-400'
-              }`}
-              title={isVisible ? 'الجهاز مكشوف على الشبكة (مرئي - انقر للإخفاء)' : 'وضع التخفي - مخفي (انقر للظهور)'}
-            >
-              {isVisible ? (
-                <Eye className="w-4 h-4 text-emerald-400" />
-              ) : (
-                <EyeOff className="w-4 h-4 text-slate-400" />
-              )}
-            </button>
+          {/* Right Side: Action Buttons Toolbar */}
+          <div className="flex items-center gap-1 sm:gap-1.5 p-1 rounded-xl sm:rounded-2xl bg-slate-900/80 border border-slate-800 shadow-lg shrink-0">
 
-            {/* QR Code Quick Connect for Mobile */}
+            {/* QR Code Connect for Mobile */}
             <button
               onClick={() => setIsQrModalOpen(true)}
-              className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/80 transition-all flex items-center justify-center hover:scale-105 active:scale-95"
+              className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/80 transition-all flex items-center justify-center hover:scale-105 active:scale-95 shadow-sm"
               title="ربط الهاتف عبر رمز QR"
             >
-              <QrCode className="w-4 h-4 text-brand-400" />
+              <QrCode className="w-4 h-4 text-sky-400" />
             </button>
 
-            {/* Download Windows App Button (Visible on Desktop / Tablets) */}
-            {!isMobileClient && (
-              <a
-                href="/api/download-app/windows"
-                download="FileFly.exe"
-                className="hidden sm:flex p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-sky-500/15 hover:bg-sky-500/30 text-sky-400 hover:text-white border border-sky-500/30 transition-all items-center justify-center hover:scale-105 active:scale-95 group glow-cyan"
-                title="تحميل تطبيق FileFly المحمول للكمبيوتر (.exe تشغيل مباشر بدون تثبيت)"
+            {/* Dynamic Platform-Specific Install Button */}
+            {!isAppInstalled && !isDesktop && (
+              <button
+                onClick={handleInstallClick}
+                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg sm:rounded-xl bg-gradient-to-r from-sky-500/20 via-sky-500/15 to-emerald-500/15 hover:from-sky-500/30 hover:to-emerald-500/30 text-sky-300 hover:text-white border border-sky-500/35 transition-all text-xs font-semibold hover:scale-105 active:scale-95 glow-cyan"
+                title={installInfo.label}
               >
-                <DownloadCloud className="w-4 h-4 text-sky-400 group-hover:animate-bounce" />
-              </a>
+                <InstallIcon className="w-3.5 h-3.5 shrink-0" />
+                <span className="hidden xs:inline">{installInfo.shortLabel}</span>
+              </button>
             )}
 
             {/* Open Downloads Folder */}
             <button
               onClick={openDownloadsFolder}
-              className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/80 transition-all flex items-center justify-center hover:scale-105 active:scale-95"
+              className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/80 transition-all flex items-center justify-center hover:scale-105 active:scale-95 shadow-sm"
               title="فتح مجلد التنزيلات"
             >
               <FolderOpen className="w-4 h-4 text-amber-400" />
             </button>
           </div>
+
         </div>
       </div>
     </header>

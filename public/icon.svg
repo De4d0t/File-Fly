@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Rich Vibrant Modern Gradient (No pitch black) -->
+    <linearGradient id="mainBgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0284c7" />
+      <stop offset="45%" stop-color="#0ea5e9" />
+      <stop offset="100%" stop-color="#2563eb" />
+    </linearGradient>
+
+    <!-- Top glossy sheen -->
+    <linearGradient id="sheenGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.35" />
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.0" />
+    </linearGradient>
+
+    <!-- Subtle border highlight -->
+    <linearGradient id="borderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7dd3fc" />
+      <stop offset="50%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#60a5fa" />
+    </linearGradient>
+
+    <!-- Bolt Gradient -->
+    <linearGradient id="boltGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="100%" stop-color="#f0f9ff" />
+    </linearGradient>
+
+    <!-- Soft Depth Shadow for Bolt -->
+    <filter id="boltShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#0369a1" flood-opacity="0.5" />
+    </filter>
+  </defs>
+
+  <!-- Main Squircle Card (Rich Vibrant Blue Gradient) -->
+  <rect x="16" y="16" width="480" height="480" rx="115" fill="url(#mainBgGrad)" stroke="url(#borderGrad)" stroke-width="4" />
+
+  <!-- Top Glassy Highlight Arc -->
+  <path d="M 20 125 C 20 60, 60 20, 130 20 L 382 20 C 452 20, 492 60, 492 125 C 492 180, 20 220, 20 125 Z" fill="url(#sheenGrad)" />
+
+  <!-- Inner Soft Light Ring -->
+  <rect x="24" y="24" width="464" height="464" rx="107" fill="none" stroke="#ffffff" stroke-width="2" opacity="0.25" />
+
+  <!-- Crisp Modern Lightning Bolt (Iconic FileFly Symbol) -->
+  <polygon points="284 56 76 308 244 308 228 456 436 204 268 204 284 56"
+           fill="url(#boltGrad)"
+           filter="url(#boltShadow)"
+           stroke="#ffffff"
+           stroke-width="3"
+           stroke-linejoin="round" />
+</svg>

@@ -16,10 +16,27 @@ if (!fs.existsSync(CONFIG_DIR)) {
 }
 
 /**
+ * Formats a clean, short, human-friendly device name for Windows machines
+ */
+export function formatShortDeviceName(rawName) {
+  if (!rawName) return 'Windows PC';
+  let name = rawName.trim();
+  // Strip redundant (Windows) suffix
+  name = name.replace(/\s*\(Windows\)\s*$/i, '');
+  if (name === 'main computer') return 'PC';
+  // If typical Windows generic hostname like DESKTOP-8K2Q1M9 or LAPTOP-ABC1234
+  if (/^(DESKTOP|LAPTOP)-([A-Z0-9]{3,4})[A-Z0-9]*$/i.test(name)) {
+    const match = name.match(/^(DESKTOP|LAPTOP)-([A-Z0-9]{3,4})/i);
+    return `PC-${match[2]}`;
+  }
+  return name;
+}
+
+/**
  * Loads persistent device configuration or creates defaults
  */
 export function getDeviceConfig() {
-  const defaultDeviceName = `${os.hostname()} (Windows)`;
+  const defaultDeviceName = formatShortDeviceName(os.hostname());
   const defaultId = crypto.randomUUID();
   const defaultDownloads = getDefaultDownloadsDir();
 
@@ -32,9 +49,15 @@ export function getDeviceConfig() {
         downloadsDir = defaultDownloads;
       }
 
+      // Automatically sanitize legacy long names
+      let name = data.name;
+      if (!name || name.includes('(Windows)') || /^(DESKTOP|LAPTOP)-/i.test(name) || name === 'main computer') {
+        name = formatShortDeviceName(name || defaultDeviceName);
+      }
+
       return {
         id: data.id || defaultId,
-        name: data.name || defaultDeviceName,
+        name,
         visible: data.visible !== undefined ? data.visible : true,
         downloadsDir,
       };

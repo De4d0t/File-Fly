@@ -69,7 +69,7 @@ export class TransferEngine {
       },
       recipient: {
         id: recipient.id,
-        name: recipient.name || 'مستلم',
+        name: recipient.name || 'Device',
         ip: recipient.ip,
       },
       files: files.map((f, idx) => ({
@@ -95,10 +95,9 @@ export class TransferEngine {
 
     this.activeTransfers.set(transferId, transfer);
 
-    // Dispatch notification to recipient client or host
-    const targetIds = (recipient.id === this.config.id || !recipient.id) 
-      ? [this.config.id, 'host'] 
-      : [recipient.id, this.config.id, 'host'];
+    // Dispatch notification strictly to recipient client or host
+    const isTargetingHost = recipient.id === this.config.id || !recipient.id || recipient.id === 'host';
+    const targetIds = isTargetingHost ? [this.config.id, 'host'] : [recipient.id];
 
     this.notifyUI('TRANSFER_REQUEST', transfer, targetIds);
 
@@ -117,14 +116,14 @@ export class TransferEngine {
       transfer.startTime = Date.now();
       transfer.lastSpeedTime = Date.now();
 
-      // Notify sender that recipient accepted
-      this.notifyUI('TRANSFER_ACCEPTED', transfer, [transfer.sender.id, transfer.recipient.id, this.config.id, 'host']);
+      // Notify sender and recipient that transfer was accepted
+      this.notifyUI('TRANSFER_ACCEPTED', transfer, [transfer.sender.id, transfer.recipient.id]);
       return { success: true, status: 'accepted', transferId };
     } else {
       transfer.status = 'declined';
 
-      // Notify sender that recipient declined
-      this.notifyUI('TRANSFER_DECLINED', transfer, [transfer.sender.id, this.config.id, 'host']);
+      // Notify sender and recipient that transfer was declined
+      this.notifyUI('TRANSFER_DECLINED', transfer, [transfer.sender.id, transfer.recipient.id]);
       setTimeout(() => {
         this.activeTransfers.delete(transferId);
       }, 15000);
