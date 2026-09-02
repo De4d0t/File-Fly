@@ -571,17 +571,21 @@ export function FileFlyProvider({ children }) {
     setActiveTransfer(null);
   };
 
-  // Open Downloads Folder in Explorer (only on host machine)
+  // Open Downloads Folder in Explorer (on host PC) or open History/Downloads Modal (on mobile/second PC)
   const openDownloadsFolder = async () => {
-    if (!isHostMachine) return;
-    if (typeof window !== 'undefined' && window.fileflyDesktop?.openDownloadsFolder) {
-      window.fileflyDesktop.openDownloadsFolder();
-      return;
-    }
-    try {
-      await fetch('/api/open-downloads', { method: 'POST' });
-    } catch (e) {
-      console.error('Failed to open downloads folder:', e);
+    if (isHostMachine) {
+      if (typeof window !== 'undefined' && window.fileflyDesktop?.openDownloadsFolder) {
+        window.fileflyDesktop.openDownloadsFolder();
+        return;
+      }
+      try {
+        await fetch('/api/open-downloads', { method: 'POST' });
+      } catch (e) {
+        console.error('Failed to open downloads folder:', e);
+      }
+    } else {
+      // On mobile / second computer browser, open downloads history modal
+      setIsHistoryModalOpen(true);
     }
   };
 

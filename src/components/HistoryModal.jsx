@@ -7,13 +7,14 @@ import {
   FolderOpen, 
   FileText, 
   CheckCircle2,
-  Calendar
+  Calendar,
+  DownloadCloud
 } from 'lucide-react';
 import { useFileFly } from '../context/FileFlyContext.jsx';
 import { formatBytes } from '../utils/formatters.js';
 
 export default function HistoryModal() {
-  const { isHistoryModalOpen, setIsHistoryModalOpen, history, openDownloadsFolder } = useFileFly();
+  const { isHistoryModalOpen, setIsHistoryModalOpen, history, openDownloadsFolder, isHostMachine } = useFileFly();
 
   if (!isHistoryModalOpen) return null;
 
@@ -37,18 +38,20 @@ export default function HistoryModal() {
             <div>
               <h3 className="text-xl font-bold text-white">سجل النقل</h3>
               <p className="text-xs text-slate-400">
-                قائمة بالملفات التي تم إرسالها واستقبالها
+                {isHostMachine ? 'قائمة بالملفات المنقولة ومجلد الحفظ' : 'الملفات المستلمة محفوظة في تنزيلات جهازك'}
               </p>
             </div>
           </div>
 
-          <button
-            onClick={openDownloadsFolder}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-colors"
-          >
-            <FolderOpen className="w-4 h-4 text-amber-400" />
-            <span>فتح المجلد</span>
-          </button>
+          {isHostMachine && (
+            <button
+              onClick={openDownloadsFolder}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-colors"
+            >
+              <FolderOpen className="w-4 h-4 text-amber-400" />
+              <span>فتح المجلد</span>
+            </button>
+          )}
         </div>
 
         {/* List of Items */}
@@ -94,14 +97,27 @@ export default function HistoryModal() {
                     </div>
                   </div>
 
-                  <div className="text-left shrink-0">
-                    <div className="font-mono text-xs font-bold text-white">
-                      {formatBytes(item.totalBytes)}
+                  <div className="flex items-center gap-3 shrink-0">
+                    <div className="text-left">
+                      <div className="font-mono text-xs font-bold text-white">
+                        {formatBytes(item.totalBytes)}
+                      </div>
+                      <div className="text-[10px] text-emerald-400 flex items-center gap-1 justify-end mt-0.5">
+                        <CheckCircle2 className="w-3 h-3" />
+                        <span>مكتمل</span>
+                      </div>
                     </div>
-                    <div className="text-[10px] text-emerald-400 flex items-center gap-1 justify-end mt-0.5">
-                      <CheckCircle2 className="w-3 h-3" />
-                      <span>مكتمل</span>
-                    </div>
+
+                    {item.id && (
+                      <a
+                        href={`/api/transfer/download/${item.id}/0`}
+                        download={item.firstFileName}
+                        className="p-2 rounded-xl bg-slate-800 hover:bg-emerald-500/20 text-slate-300 hover:text-emerald-400 border border-slate-700 hover:border-emerald-500/40 transition-colors"
+                        title="تحميل الملف إلى جهازك"
+                      >
+                        <DownloadCloud className="w-4 h-4" />
+                      </a>
+                    )}
                   </div>
                 </div>
               );
