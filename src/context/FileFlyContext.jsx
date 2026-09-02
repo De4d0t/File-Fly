@@ -85,10 +85,15 @@ export function FileFlyProvider({ children }) {
 
   const hostDeviceRef = useRef(null);
   const myDeviceRef = useRef(myDevice);
+  const activeTransferRef = useRef(activeTransfer);
 
   useEffect(() => {
     myDeviceRef.current = myDevice;
   }, [myDevice]);
+
+  useEffect(() => {
+    activeTransferRef.current = activeTransfer;
+  }, [activeTransfer]);
 
   // Initialize Socket and listeners
   useEffect(() => {
@@ -246,7 +251,18 @@ export function FileFlyProvider({ children }) {
         setHistory((prev) => [transfer.historyItem, ...prev]);
       }
 
-      // Keep completion card visible for 12 seconds so receiver can comfortably click "Open Folder"
+      // If this device is a web client receiving files from host, automatically download to its downloads folder
+      if (!isHostMachine && activeTransferRef.current?.direction === 'incoming') {
+        const downloadUrl = `/api/transfer/download/${transfer.id}/0`;
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = transfer.files?.[0]?.name || transfer.historyItem?.firstFileName || 'file';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+
+      // Keep completion card visible for 12 seconds so receiver can comfortably interact
       setTimeout(() => {
         setActiveTransfer((curr) => (curr?.status === 'completed' ? null : curr));
       }, 12000);
@@ -555,8 +571,13 @@ export function FileFlyProvider({ children }) {
     setActiveTransfer(null);
   };
 
-  // Open Downloads Folder in Explorer
+  // Open Downloads Folder in Explorer (only on host machine)
   const openDownloadsFolder = async () => {
+    if (!isHostMachine) return;
+    if (typeof window !== 'undefined' && window.fileflyDesktop?.openDownloadsFolder) {
+      window.fileflyDesktop.openDownloadsFolder();
+      return;
+    }
     try {
       await fetch('/api/open-downloads', { method: 'POST' });
     } catch (e) {
@@ -569,6 +590,7 @@ export function FileFlyProvider({ children }) {
       value={{
         myDevice,
         isOnline,
+        isHostMachine,
         peers,
         history,
         isScanning,

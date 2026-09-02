@@ -8,13 +8,14 @@ import {
   XCircle, 
   AlertTriangle,
   Loader2,
-  FolderOpen
+  FolderOpen,
+  DownloadCloud
 } from 'lucide-react';
 import { useFileFly } from '../context/FileFlyContext.jsx';
 import { formatBytes, formatSpeed, calculateETA } from '../utils/formatters.js';
 
 export default function ActiveTransfers() {
-  const { activeTransfer, cancelActiveTransfer, openDownloadsFolder } = useFileFly();
+  const { activeTransfer, cancelActiveTransfer, openDownloadsFolder, isHostMachine } = useFileFly();
 
   if (!activeTransfer) return null;
 
@@ -176,14 +177,26 @@ export default function ActiveTransfers() {
               )}
 
               {isCompleted && isIncoming && (
-                <button
-                  onClick={openDownloadsFolder}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-xs font-bold text-emerald-300 hover:text-white transition-all shadow-sm active:scale-95 glow-green"
-                  title="فتح مجلد التنزيلات"
-                >
-                  <FolderOpen className="w-4 h-4 text-emerald-400" />
-                  <span>فتح المجلد</span>
-                </button>
+                isHostMachine ? (
+                  <button
+                    onClick={openDownloadsFolder}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-xs font-bold text-emerald-300 hover:text-white transition-all shadow-sm active:scale-95 glow-green"
+                    title="فتح مجلد التنزيلات في جهازك"
+                  >
+                    <FolderOpen className="w-4 h-4 text-emerald-400" />
+                    <span>فتح المجلد</span>
+                  </button>
+                ) : (
+                  <a
+                    href={`/api/transfer/download/${activeTransfer.id}/0`}
+                    download={activeTransfer.firstFileName}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-xs font-bold text-emerald-300 hover:text-white transition-all shadow-sm active:scale-95 glow-green"
+                    title="تحميل الملف إلى جهازك"
+                  >
+                    <DownloadCloud className="w-4 h-4 text-emerald-400" />
+                    <span>تنزيل الملف</span>
+                  </a>
+                )
               )}
 
               {isCompleted && !isIncoming && (

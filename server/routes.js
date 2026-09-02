@@ -245,6 +245,30 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
   });
 
   /**
+   * Download a completed transfer file (for web/mobile clients)
+   */
+  router.get('/transfer/download/:transferId/:fileIndex', (req, res) => {
+    const { transferId, fileIndex } = req.params;
+    const transfer = transferEngine.getTransfer(transferId);
+    
+    // Check in active transfers or history
+    let targetFile = transfer?.files?.[Number(fileIndex)];
+    if (!targetFile || !targetFile.savedPath) {
+      const historyItem = transferEngine.getHistory().find((h) => h.id === transferId);
+      if (historyItem && historyItem.savedPath && fs.existsSync(historyItem.savedPath)) {
+        return res.download(historyItem.savedPath, historyItem.firstFileName);
+      }
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    if (fs.existsSync(targetFile.savedPath)) {
+      return res.download(targetFile.savedPath, targetFile.name);
+    }
+
+    res.status(404).json({ error: 'File on disk not found' });
+  });
+
+  /**
    * Transfer History
    */
   router.get('/history', (req, res) => {
