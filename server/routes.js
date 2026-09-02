@@ -300,6 +300,34 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
   });
 
   /**
+   * Direct download for FileFly Desktop Application installer / binary
+   */
+  router.get('/download-app/windows', (req, res) => {
+    const releaseDir = path.join(process.cwd(), 'release');
+    if (fs.existsSync(releaseDir)) {
+      const files = fs.readdirSync(releaseDir);
+      const exeFile = files.find((f) => f.endsWith('.exe') && !f.includes('.blockmap'));
+      if (exeFile) {
+        return res.download(path.join(releaseDir, exeFile), 'FileFly-Setup.exe');
+      }
+    }
+
+    const possiblePaths = [
+      path.join(process.cwd(), 'release', 'FileFly Setup 1.0.0.exe'),
+      path.join(process.cwd(), 'release', 'FileFly-Setup.exe'),
+      path.join(process.cwd(), 'release', 'FileFly.exe'),
+    ];
+
+    for (const p of possiblePaths) {
+      if (fs.existsSync(p)) {
+        return res.download(p, 'FileFly-Setup.exe');
+      }
+    }
+
+    res.status(404).json({ error: 'جاري تجهيز حزمة التطبيق...' });
+  });
+
+  /**
    * Open Downloads Folder in OS File Explorer
    */
   router.post('/open-downloads', (req, res) => {

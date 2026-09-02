@@ -22,6 +22,7 @@ export default function Header() {
     myDevice, 
     isOnline, 
     isHostMachine,
+    isMobileClient,
     isScanning,
     isRadarActive,
     toggleRadar,
@@ -177,15 +178,14 @@ export default function Header() {
             <History className="w-4 h-4 text-purple-400" />
           </button>
 
-          {/* Download App Button (for remote browsers) */}
-          {!isHostMachine && (
+          {/* Download Windows App Button (For PC/Laptop Browsers Only - Hidden on Mobile) */}
+          {!isHostMachine && !isMobileClient && (
             <button
               onClick={() => setIsQrModalOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-brand-600 to-sky-600 hover:from-brand-500 hover:to-sky-500 text-white text-xs font-bold shadow-md shadow-sky-500/20 hover:scale-105 active:scale-95 transition-all border border-sky-400/30 glow-cyan"
-              title="تحميل تطبيق FileFly للربط التلقائي الدائم"
+              className="p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-sky-300 border border-slate-700/80 transition-all flex items-center justify-center hover:scale-105 active:scale-95 shadow-sm group"
+              title="تحميل تطبيق FileFly للكمبيوتر"
             >
-              <DownloadCloud className="w-3.5 h-3.5 animate-bounce" />
-              <span className="hidden sm:inline">تحميل التطبيق 💻</span>
+              <DownloadCloud className="w-4 h-4 text-sky-400 group-hover:animate-bounce" />
             </button>
           )}
 

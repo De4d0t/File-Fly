@@ -9,8 +9,28 @@
     "dev:vite": "vite",
     "dev": "concurrently -k \"npm run dev:server\" \"npm run dev:vite\"",
     "build": "vite build",
+    "build:exe": "vite build && electron-builder --win",
     "electron:dev": "concurrently -k \"npm run dev:server\" \"vite\" \"wait-on tcp:5173 && electron .\"",
     "start": "node server/index.js"
+  },
+  "build": {
+    "appId": "com.filefly.app",
+    "productName": "FileFly",
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
   },
   "keywords": [
     "file-transfer",
@@ -37,6 +57,7 @@
     "autoprefixer": "^10.4.20",
     "concurrently": "^9.1.2",
     "electron": "^34.2.0",
+    "electron-builder": "^26.15.3",
     "postcss": "^8.5.2",
     "tailwindcss": "^3.4.17",
     "vite": "^6.1.0",

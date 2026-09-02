@@ -607,6 +607,7 @@ export function FileFlyProvider({ children }) {
         myDevice,
         isOnline,
         isHostMachine,
+        isMobileClient: typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || ''),
         peers,
         history,
         isScanning,
