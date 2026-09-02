@@ -187,11 +187,11 @@ export default function QrCodeModal() {
               </p>
               <a
                 href="/api/download-app/windows"
-                download="FileFly-Setup.exe"
+                download="FileFly.exe"
                 className="flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-2xl bg-gradient-to-r from-brand-600 via-sky-600 to-emerald-600 hover:opacity-95 text-white text-xs font-bold shadow-lg shadow-sky-500/25 transition-all active:scale-95 glow-cyan"
               >
                 <DownloadCloud className="w-4 h-4 animate-bounce" />
-                <span>تحميل تطبيق FileFly للويندوز (.exe)</span>
+                <span>تحميل FileFly.exe (تشغيل مباشر بدون تثبيت)</span>
               </a>
             </div>
           </div>

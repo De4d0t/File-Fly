@@ -301,7 +301,7 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
   });
 
   /**
-   * Direct download for FileFly Desktop Application installer / binary
+   * Direct download for FileFly Portable Standalone Executable (.exe)
    */
   router.get('/download-app/windows', (req, res) => {
     const searchDirs = [
@@ -313,9 +313,13 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
     for (const dir of searchDirs) {
       if (fs.existsSync(dir)) {
         const files = fs.readdirSync(dir);
-        const exeFile = files.find((f) => f.toLowerCase().endsWith('.exe') && !f.includes('.blockmap'));
-        if (exeFile) {
-          return res.download(path.join(dir, exeFile), 'FileFly-Setup.exe');
+        // Prioritize portable single-file executable over setup installer
+        const portableFile = files.find((f) => (f.toLowerCase().includes('portable') || !f.toLowerCase().includes('setup')) && f.toLowerCase().endsWith('.exe') && !f.includes('.blockmap'));
+        const fallbackExe = files.find((f) => f.toLowerCase().endsWith('.exe') && !f.includes('.blockmap'));
+        const targetExe = portableFile || fallbackExe;
+
+        if (targetExe) {
+          return res.download(path.join(dir, targetExe), 'FileFly.exe');
         }
       }
     }

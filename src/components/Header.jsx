@@ -178,12 +178,12 @@ export default function Header() {
             <History className="w-4 h-4 text-purple-400" />
           </button>
 
-          {/* Download Windows App Button (Direct download icon in browser) */}
+          {/* Download Windows App Button (Direct Portable .exe download) */}
           <a
             href="/api/download-app/windows"
-            download="FileFly-Setup.exe"
+            download="FileFly.exe"
             className="p-2.5 rounded-xl bg-sky-500/15 hover:bg-sky-500/30 text-sky-400 hover:text-white border border-sky-500/30 transition-all flex items-center justify-center hover:scale-105 active:scale-95 shadow-sm group glow-cyan"
-            title="تحميل تطبيق FileFly للكمبيوتر (.exe)"
+            title="تحميل تطبيق FileFly المحمول للكمبيوتر (.exe تشغيل مباشر بدون تثبيت)"
           >
             <DownloadCloud className="w-4 h-4 text-sky-400 group-hover:animate-bounce" />
           </a>
