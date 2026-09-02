@@ -12,7 +12,8 @@ import {
   Eye,
   EyeOff,
   Radio,
-  Laptop
+  Laptop,
+  DownloadCloud
 } from 'lucide-react';
 import { useFileFly } from '../context/FileFlyContext.jsx';
 
@@ -20,6 +21,7 @@ export default function Header() {
   const { 
     myDevice, 
     isOnline, 
+    isHostMachine,
     isScanning,
     isRadarActive,
     toggleRadar,
@@ -174,6 +176,18 @@ export default function Header() {
           >
             <History className="w-4 h-4 text-purple-400" />
           </button>
+
+          {/* Download App Button (for remote browsers) */}
+          {!isHostMachine && (
+            <button
+              onClick={() => setIsQrModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-brand-600 to-sky-600 hover:from-brand-500 hover:to-sky-500 text-white text-xs font-bold shadow-md shadow-sky-500/20 hover:scale-105 active:scale-95 transition-all border border-sky-400/30 glow-cyan"
+              title="تحميل تطبيق FileFly للربط التلقائي الدائم"
+            >
+              <DownloadCloud className="w-3.5 h-3.5 animate-bounce" />
+              <span className="hidden sm:inline">تحميل التطبيق 💻</span>
+            </button>
+          )}
 
           {/* Open Downloads Folder */}
           <button

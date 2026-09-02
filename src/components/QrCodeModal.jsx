@@ -167,7 +167,7 @@ export default function QrCodeModal() {
             </p>
 
             {/* Big Clean IP Display Box */}
-            <div className="p-4 rounded-3xl bg-slate-900 border-2 border-brand-500/40 shadow-xl shadow-brand-500/10 mb-5">
+            <div className="p-4 rounded-3xl bg-slate-900 border-2 border-brand-500/40 shadow-xl shadow-brand-500/10 mb-4">
               <div className="text-[11px] font-semibold text-slate-400 mb-1">
                 العنوان المباشر للحاسوب:
               </div>
@@ -176,10 +176,23 @@ export default function QrCodeModal() {
               </div>
             </div>
 
-            {/* Auto Discovery Notice */}
-            <div className="flex items-center gap-2 p-3 rounded-2xl bg-sky-500/10 border border-sky-500/20 text-sky-400 text-xs font-medium text-right mb-4">
-              <Radio className="w-4 h-4 shrink-0 animate-pulse text-sky-400" />
-              <span>إذا قمت بتشغيل FileFly على الحاسوب الثاني، سيكتشفه الرادار تلقائياً!</span>
+            {/* Permanent Pairing Download App Box */}
+            <div className="p-4 rounded-3xl bg-slate-900/90 border border-slate-800 text-right space-y-2.5 mb-4">
+              <div className="text-xs font-bold text-white flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>الربط الدائم والتلقائي بدون روابط:</span>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                حمّل التطبيق على الحاسوب الثاني مرة واحدة، وسيتصل الجهازان تلقائياً في المرات القادمة عبر الرادار دون الحاجة لكتابة أي رابط!
+              </p>
+              <a
+                href="/api/download-app/windows"
+                download="FileFly-Setup.exe"
+                className="flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-2xl bg-gradient-to-r from-brand-600 via-sky-600 to-emerald-600 hover:opacity-95 text-white text-xs font-bold shadow-lg shadow-sky-500/25 transition-all active:scale-95 glow-cyan"
+              >
+                <DownloadCloud className="w-4 h-4 animate-bounce" />
+                <span>تحميل تطبيق FileFly للويندوز (.exe)</span>
+              </a>
             </div>
           </div>
         )}
