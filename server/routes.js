@@ -2,6 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
 import QRCode from 'qrcode';
 import { spawn, exec } from 'child_process';
 import os from 'os';
@@ -303,28 +304,23 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
    * Direct download for FileFly Desktop Application installer / binary
    */
   router.get('/download-app/windows', (req, res) => {
-    const releaseDir = path.join(process.cwd(), 'release');
-    if (fs.existsSync(releaseDir)) {
-      const files = fs.readdirSync(releaseDir);
-      const exeFile = files.find((f) => f.endsWith('.exe') && !f.includes('.blockmap'));
-      if (exeFile) {
-        return res.download(path.join(releaseDir, exeFile), 'FileFly-Setup.exe');
-      }
-    }
-
-    const possiblePaths = [
-      path.join(process.cwd(), 'release', 'FileFly Setup 1.0.0.exe'),
-      path.join(process.cwd(), 'release', 'FileFly-Setup.exe'),
-      path.join(process.cwd(), 'release', 'FileFly.exe'),
+    const searchDirs = [
+      path.join(process.cwd(), 'release'),
+      path.resolve('release'),
+      path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'release'),
     ];
 
-    for (const p of possiblePaths) {
-      if (fs.existsSync(p)) {
-        return res.download(p, 'FileFly-Setup.exe');
+    for (const dir of searchDirs) {
+      if (fs.existsSync(dir)) {
+        const files = fs.readdirSync(dir);
+        const exeFile = files.find((f) => f.toLowerCase().endsWith('.exe') && !f.includes('.blockmap'));
+        if (exeFile) {
+          return res.download(path.join(dir, exeFile), 'FileFly-Setup.exe');
+        }
       }
     }
 
-    res.status(404).json({ error: 'جاري تجهيز حزمة التطبيق...' });
+    res.status(404).json({ error: 'ملف التطبيق غير موجود حالياً' });
   });
 
   /**
