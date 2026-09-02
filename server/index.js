@@ -206,6 +206,25 @@ wss.on('connection', (ws, req) => {
           discovery.setName(newName);
           dispatchEvent('PEERS_UPDATE', discovery.getPeersList(), null);
         }
+      } else if (type === 'CLIENT_TRANSFER_PROGRESS') {
+        const transfer = transferEngine.activeTransfers.get(payload.id);
+        if (transfer) {
+          transfer.bytesTransferred = payload.bytesTransferred || transfer.bytesTransferred;
+          transfer.totalBytes = payload.totalBytes || transfer.totalBytes;
+          transfer.speedBps = payload.speedBps || transfer.speedBps;
+          transfer.status = 'transferring';
+
+          const progressData = {
+            id: transfer.id,
+            bytesTransferred: transfer.bytesTransferred,
+            totalBytes: transfer.totalBytes,
+            speedBps: transfer.speedBps,
+            percentage: payload.percentage !== undefined ? payload.percentage : (transfer.totalBytes > 0 ? Math.round((transfer.bytesTransferred / transfer.totalBytes) * 100) : 0),
+          };
+
+          // Dispatch progress immediately to recipient and sender
+          dispatchEvent('TRANSFER_PROGRESS', progressData, [transfer.sender.id, transfer.recipient.id, config.id, 'host']);
+        }
       } else if (type === 'SET_RADAR') {
         const active = Boolean(payload.active);
         discovery.setRadarActive(active);

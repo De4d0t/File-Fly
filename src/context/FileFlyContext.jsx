@@ -222,13 +222,29 @@ export function FileFlyProvider({ children }) {
       }
     });
 
-    // Live progress for incoming files
+    // Live progress for incoming & outgoing files
     const unsubProgress = socketService.on('TRANSFER_PROGRESS', (progress) => {
       setActiveTransfer((prev) => {
-        if (!prev || prev.id !== progress.id) return prev;
+        if (!prev || (prev.id && prev.id !== progress.id)) {
+          return {
+            id: progress.id,
+            direction: 'incoming',
+            partnerName: 'مرسل',
+            filesCount: 1,
+            firstFileName: 'ملف جاري استلامه',
+            bytesTransferred: progress.bytesTransferred || 0,
+            totalBytes: progress.totalBytes || 0,
+            percentage: progress.percentage || 0,
+            speedBps: progress.speedBps || 0,
+            status: 'transferring',
+          };
+        }
         return {
           ...prev,
-          ...progress,
+          bytesTransferred: progress.bytesTransferred !== undefined ? progress.bytesTransferred : prev.bytesTransferred,
+          totalBytes: progress.totalBytes !== undefined ? progress.totalBytes : prev.totalBytes,
+          percentage: progress.percentage !== undefined ? progress.percentage : prev.percentage,
+          speedBps: progress.speedBps !== undefined ? progress.speedBps : prev.speedBps,
           status: 'transferring',
         };
       });
@@ -238,18 +254,50 @@ export function FileFlyProvider({ children }) {
     const unsubCompleted = socketService.on('TRANSFER_COMPLETED', (transfer) => {
       playSuccessSound();
       setActiveTransfer((prev) => {
-        if (!prev || prev.id !== transfer.id) return null;
-        return { ...prev, status: 'completed', percentage: 100 };
+        const id = transfer.id || prev?.id;
+        const firstFileName = transfer.historyItem?.firstFileName || transfer.firstFileName || prev?.firstFileName || 'ملف';
+        const isIncoming = prev?.direction === 'incoming' || transfer.direction === 'incoming';
+
+        // Auto-download file directly into mobile device downloads folder
+        if (!isHostMachine && isIncoming && id) {
+          try {
+            const a = document.createElement('a');
+            a.href = `/api/transfer/download/${id}/0`;
+            a.download = firstFileName;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+              if (document.body.contains(a)) document.body.removeChild(a);
+            }, 500);
+          } catch (e) {
+            console.error('Auto download error:', e);
+          }
+        }
+
+        if (!prev || (prev.id && prev.id !== transfer.id)) {
+          return {
+            id,
+            direction: isIncoming ? 'incoming' : 'outgoing',
+            partnerName: 'جهاز',
+            filesCount: 1,
+            firstFileName,
+            totalBytes: transfer.totalBytes || 0,
+            bytesTransferred: transfer.totalBytes || 0,
+            percentage: 100,
+            status: 'completed',
+          };
+        }
+        return { ...prev, status: 'completed', percentage: 100, bytesTransferred: prev.totalBytes };
       });
 
       if (transfer.historyItem) {
         setHistory((prev) => [transfer.historyItem, ...prev]);
       }
 
-      // Keep completion card visible for 12 seconds so receiver can choose to Open or Download
+      // Keep completion card visible for 25 seconds so receiver can easily click Save or Preview
       setTimeout(() => {
         setActiveTransfer((curr) => (curr?.status === 'completed' ? null : curr));
-      }, 12000);
+      }, 25000);
     });
 
     // Transfer declined by recipient
@@ -490,9 +538,21 @@ export function FileFlyProvider({ children }) {
             if (!prev) return prev;
             return {
               ...prev,
-              ...progress,
+              bytesTransferred: progress.loaded,
+              totalBytes: progress.total,
+              percentage: progress.percentage,
+              speedBps: progress.speedBps,
               status: 'transferring',
             };
+          });
+
+          // Relay live progress to recipient via WebSocket
+          socketService.send('CLIENT_TRANSFER_PROGRESS', {
+            id: transferId,
+            bytesTransferred: progress.loaded,
+            totalBytes: progress.total,
+            percentage: progress.percentage,
+            speedBps: progress.speedBps,
           });
         },
         () => {

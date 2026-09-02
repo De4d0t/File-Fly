@@ -189,29 +189,41 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
   });
 
   /**
-   * High-Speed Upload Endpoint
+   * High-Speed Upload Endpoint with real-time stream chunk progress tracking
    */
-  router.post('/transfer/upload', upload.array('files'), (req, res) => {
-    const { transferId } = req.body;
-    const uploadedFiles = req.files || [];
+  router.post(
+    '/transfer/upload',
+    (req, res, next) => {
+      const transferId = req.query.transferId || req.headers['x-transfer-id'];
+      if (transferId) {
+        req.on('data', (chunk) => {
+          transferEngine.updateProgress(transferId, 0, chunk.length);
+        });
+      }
+      next();
+    },
+    upload.array('files'),
+    (req, res) => {
+      const transferId = req.body?.transferId || req.query?.transferId || req.headers['x-transfer-id'];
+      const uploadedFiles = req.files || [];
 
-    const transfer = transferEngine.getTransfer(transferId);
-    if (!transfer) {
-      return res.status(404).json({ error: 'Transfer session not found' });
+      const transfer = transferEngine.getTransfer(transferId);
+      if (!transfer) {
+        return res.status(404).json({ error: 'Transfer session not found' });
+      }
+
+      // Process completed files
+      uploadedFiles.forEach((f, idx) => {
+        transferEngine.completeFile(transferId, idx, f.path);
+      });
+
+      res.json({
+        success: true,
+        uploadedCount: uploadedFiles.length,
+        files: uploadedFiles.map((f) => ({ name: f.originalname, size: f.size })),
+      });
     }
-
-    // Process completed files
-    uploadedFiles.forEach((f, idx) => {
-      transferEngine.updateProgress(transferId, idx, f.size);
-      transferEngine.completeFile(transferId, idx, f.path);
-    });
-
-    res.json({
-      success: true,
-      uploadedCount: uploadedFiles.length,
-      files: uploadedFiles.map((f) => ({ name: f.originalname, size: f.size })),
-    });
-  });
+  );
 
   /**
    * Stream File Upload (Chunked Stream for ultimate throughput)

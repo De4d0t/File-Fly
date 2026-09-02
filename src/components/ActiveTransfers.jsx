@@ -179,36 +179,53 @@ export default function ActiveTransfers() {
 
               {isCompleted && isIncoming && (
                 <div className="flex items-center gap-2">
-                  {/* Option 1: Open / Play File */}
-                  <button
-                    onClick={() => openFile(activeTransfer)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 border border-sky-500/30 text-xs font-bold text-sky-300 hover:text-white transition-all shadow-sm active:scale-95 glow-cyan"
-                    title="تشغيل أو فتح الملف المستلم مباشرة"
-                  >
-                    <Play className="w-3.5 h-3.5 fill-current text-sky-400" />
-                    <span>فتح الملف</span>
-                  </button>
-
-                  {/* Option 2: Open Containing Folder */}
                   {isHostMachine ? (
-                    <button
-                      onClick={() => openDownloadsFolder(activeTransfer)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-xs font-bold text-emerald-300 hover:text-white transition-all shadow-sm active:scale-95 glow-green"
-                      title="فتح مجلد التنزيلات وتحديد الملف المستلم في Windows Explorer"
-                    >
-                      <FolderOpen className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>فتح المجلد</span>
-                    </button>
+                    <>
+                      {/* Option 1: Open / Play File */}
+                      <button
+                        onClick={() => openFile(activeTransfer)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 border border-sky-500/30 text-xs font-bold text-sky-300 hover:text-white transition-all shadow-sm active:scale-95 glow-cyan"
+                        title="تشغيل أو فتح الملف المستلم مباشرة"
+                      >
+                        <Play className="w-3.5 h-3.5 fill-current text-sky-400" />
+                        <span>فتح الملف</span>
+                      </button>
+
+                      {/* Option 2: Open Containing Folder */}
+                      <button
+                        onClick={() => openDownloadsFolder(activeTransfer)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-xs font-bold text-emerald-300 hover:text-white transition-all shadow-sm active:scale-95 glow-green"
+                        title="فتح مجلد التنزيلات وتحديد الملف المستلم في Windows Explorer"
+                      >
+                        <FolderOpen className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>فتح المجلد</span>
+                      </button>
+                    </>
                   ) : (
-                    <a
-                      href={`/api/transfer/download/${activeTransfer.id}/0`}
-                      download={activeTransfer.firstFileName}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-xs font-bold text-emerald-300 hover:text-white transition-all shadow-sm active:scale-95 glow-green"
-                      title="تحميل الملف إلى جهازك"
-                    >
-                      <DownloadCloud className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>تنزيل</span>
-                    </a>
+                    <>
+                      {/* Mobile Save & Download */}
+                      <a
+                        href={`/api/transfer/download/${activeTransfer.id}/0`}
+                        download={activeTransfer.firstFileName}
+                        className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow-md transition-all active:scale-95 glow-green"
+                        title="حفظ وتنزيل الملف في الهاتف"
+                      >
+                        <DownloadCloud className="w-4 h-4 text-slate-950" />
+                        <span>حفظ في الهاتف</span>
+                      </a>
+
+                      {/* Mobile Preview / View */}
+                      <a
+                        href={`/api/transfer/view/${activeTransfer.id}/0`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs border border-slate-700 transition-all active:scale-95"
+                        title="معاينة الملف في المتصفح"
+                      >
+                        <Play className="w-3.5 h-3.5 text-sky-400 fill-current" />
+                        <span>معاينة</span>
+                      </a>
+                    </>
                   )}
                 </div>
               )}

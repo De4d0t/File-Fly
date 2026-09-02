@@ -17,19 +17,10 @@
     "appId": "com.filefly.app",
     "productName": "FileFly",
     "directories": {
-      "output": "release"
+      "output": "dist-app"
     },
     "win": {
-      "target": [
-        "nsis",
-        "portable"
-      ]
-    },
-    "nsis": {
-      "oneClick": true,
-      "allowToChangeInstallationDirectory": false,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
+      "target": "portable"
     }
   },
   "keywords": [

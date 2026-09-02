@@ -83,7 +83,7 @@ export async function checkTransferApproval(targetBaseUrl, transferId) {
 }
 
 /**
- * Uploads files to target peer with real-time XHR progress
+ * Uploads files to target peer with real-time XHR progress & smooth speed calculation
  */
 export function uploadFilesToPeer(targetBaseUrl, transferId, files, onProgress, onComplete, onError) {
   const formData = new FormData();
@@ -94,28 +94,34 @@ export function uploadFilesToPeer(targetBaseUrl, transferId, files, onProgress, 
   });
 
   const xhr = new XMLHttpRequest();
-  xhr.open('POST', `${targetBaseUrl}/api/transfer/upload`, true);
+  xhr.open('POST', `${targetBaseUrl}/api/transfer/upload?transferId=${encodeURIComponent(transferId)}`, true);
+  xhr.setRequestHeader('x-transfer-id', transferId);
 
   let lastLoaded = 0;
   let lastTime = Date.now();
+  let currentSpeed = 0;
 
   xhr.upload.onprogress = (event) => {
     if (event.lengthComputable) {
       const now = Date.now();
       const elapsed = (now - lastTime) / 1000;
 
-      let speedBps = 0;
-      if (elapsed >= 0.3) {
-        speedBps = Math.max(0, (event.loaded - lastLoaded) / elapsed);
+      if (elapsed >= 0.2) {
+        const instantSpeed = Math.max(0, (event.loaded - lastLoaded) / elapsed);
+        currentSpeed = currentSpeed === 0 ? instantSpeed : (currentSpeed * 0.6 + instantSpeed * 0.4);
         lastLoaded = event.loaded;
         lastTime = now;
       }
 
+      const percentage = event.total > 0
+        ? Math.min(100, Math.round((event.loaded / event.total) * 100))
+        : 0;
+
       onProgress({
         loaded: event.loaded,
         total: event.total,
-        percentage: Math.min(100, Math.round((event.loaded / event.total) * 100)),
-        speedBps,
+        percentage,
+        speedBps: currentSpeed,
       });
     }
   };

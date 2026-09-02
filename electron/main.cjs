@@ -2,6 +2,17 @@ const { app, BrowserWindow, ipcMain, dialog, shell, Notification } = require('el
 const path = require('path');
 const fs = require('fs');
 
+// Start background Express/WebSocket server when packaged as .exe
+if (app.isPackaged || process.env.START_SERVER === '1') {
+  try {
+    import('../server/index.js').catch((err) => {
+      console.error('[FileFly Backend] Error starting server:', err);
+    });
+  } catch (err) {
+    console.error('[FileFly Backend] Import failed:', err);
+  }
+}
+
 let mainWindow = null;
 
 function createWindow() {
@@ -26,10 +37,12 @@ function createWindow() {
   const isDev = process.env.NODE_ENV !== 'production' && !app.isPackaged;
   const startUrl = isDev ? 'http://localhost:5173' : 'http://localhost:53316';
 
-  mainWindow.loadURL(startUrl).catch(() => {
-    // Retry loading if dev server is still starting
-    setTimeout(() => mainWindow.loadURL(startUrl), 1500);
-  });
+  const loadApp = () => {
+    mainWindow.loadURL(startUrl).catch(() => {
+      setTimeout(loadApp, 1000);
+    });
+  };
+  loadApp();
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
