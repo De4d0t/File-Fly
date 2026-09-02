@@ -310,6 +310,59 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
   });
 
   /**
+   * Open / Launch / Play Received File in Default OS Application
+   */
+  router.post('/open-file', (req, res) => {
+    const { transferId, filePath, fileName } = req.body;
+    let targetPath = filePath;
+
+    if (!targetPath && transferId) {
+      const transfer = transferEngine.getTransfer(transferId);
+      targetPath = transfer?.files?.[0]?.savedPath;
+      if (!targetPath) {
+        const historyItem = transferEngine.getHistory().find((h) => h.id === transferId);
+        targetPath = historyItem?.savedPath;
+      }
+    }
+
+    if (!targetPath && fileName) {
+      const dir = config.downloadsDir || path.join(os.homedir(), 'Downloads', 'FileFly');
+      targetPath = path.join(dir, fileName);
+    }
+
+    if (!targetPath || !fs.existsSync(targetPath)) {
+      // Fallback: check in default downloads directory
+      const defaultDir = config.downloadsDir || path.join(os.homedir(), 'Downloads', 'FileFly');
+      if (fileName && fs.existsSync(path.join(defaultDir, fileName))) {
+        targetPath = path.join(defaultDir, fileName);
+      } else {
+        return res.status(404).json({ error: 'File not found on disk' });
+      }
+    }
+
+    try {
+      const osType = getDeviceOS();
+      if (osType === 'windows') {
+        const escaped = targetPath.replace(/'/g, "''");
+        exec(`powershell -NoProfile -Command "Start-Process -FilePath '${escaped}'"`, (err) => {
+          if (err) {
+            exec(`start "" "${targetPath}"`);
+          }
+        });
+      } else if (osType === 'mac') {
+        exec(`open "${targetPath}"`);
+      } else if (osType === 'linux') {
+        exec(`xdg-open "${targetPath}"`);
+      }
+
+      res.json({ success: true, opened: targetPath });
+    } catch (err) {
+      console.error('[OpenFile Error]:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  /**
    * Generate QR Code for Mobile Quick Connect
    */
   router.get('/qr', async (req, res) => {

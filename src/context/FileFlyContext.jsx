@@ -584,8 +584,31 @@ export function FileFlyProvider({ children }) {
         console.error('Failed to open downloads folder:', e);
       }
     } else {
-      // On mobile / second computer browser, open downloads history modal
       setIsHistoryModalOpen(true);
+    }
+  };
+
+  // Open / Run Received File
+  const openFile = async (itemOrTransfer) => {
+    const transferId = itemOrTransfer?.id;
+    const fileName = itemOrTransfer?.firstFileName || itemOrTransfer?.name;
+    const savedPath = itemOrTransfer?.savedPath;
+
+    if (isHostMachine) {
+      try {
+        await fetch('/api/open-file', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ transferId, fileName, filePath: savedPath }),
+        });
+      } catch (e) {
+        console.error('Failed to open file:', e);
+      }
+    } else {
+      // On web/mobile client: open the file directly or trigger download
+      if (transferId) {
+        window.open(`/api/transfer/download/${transferId}/0`, '_blank');
+      }
     }
   };
 
@@ -612,6 +635,7 @@ export function FileFlyProvider({ children }) {
         updateDeviceName,
         refreshPeers,
         openDownloadsFolder,
+        openFile,
         respondToIncomingRequest,
         sendFilesToDevice,
         cancelActiveTransfer,

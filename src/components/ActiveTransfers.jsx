@@ -9,13 +9,14 @@ import {
   AlertTriangle,
   Loader2,
   FolderOpen,
-  DownloadCloud
+  DownloadCloud,
+  Play
 } from 'lucide-react';
 import { useFileFly } from '../context/FileFlyContext.jsx';
 import { formatBytes, formatSpeed, calculateETA } from '../utils/formatters.js';
 
 export default function ActiveTransfers() {
-  const { activeTransfer, cancelActiveTransfer, openDownloadsFolder, isHostMachine } = useFileFly();
+  const { activeTransfer, cancelActiveTransfer, openDownloadsFolder, openFile, isHostMachine } = useFileFly();
 
   if (!activeTransfer) return null;
 
@@ -177,26 +178,39 @@ export default function ActiveTransfers() {
               )}
 
               {isCompleted && isIncoming && (
-                isHostMachine ? (
+                <div className="flex items-center gap-2">
+                  {/* Option 1: Open / Play File */}
                   <button
-                    onClick={openDownloadsFolder}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-xs font-bold text-emerald-300 hover:text-white transition-all shadow-sm active:scale-95 glow-green"
-                    title="فتح مجلد التنزيلات في جهازك"
+                    onClick={() => openFile(activeTransfer)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 border border-sky-500/30 text-xs font-bold text-sky-300 hover:text-white transition-all shadow-sm active:scale-95 glow-cyan"
+                    title="تشغيل أو فتح الملف المستلم مباشرة"
                   >
-                    <FolderOpen className="w-4 h-4 text-emerald-400" />
-                    <span>فتح المجلد</span>
+                    <Play className="w-3.5 h-3.5 fill-current text-sky-400" />
+                    <span>فتح الملف</span>
                   </button>
-                ) : (
-                  <a
-                    href={`/api/transfer/download/${activeTransfer.id}/0`}
-                    download={activeTransfer.firstFileName}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-xs font-bold text-emerald-300 hover:text-white transition-all shadow-sm active:scale-95 glow-green"
-                    title="تحميل الملف إلى جهازك"
-                  >
-                    <DownloadCloud className="w-4 h-4 text-emerald-400" />
-                    <span>تنزيل الملف</span>
-                  </a>
-                )
+
+                  {/* Option 2: Open Containing Folder */}
+                  {isHostMachine ? (
+                    <button
+                      onClick={openDownloadsFolder}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-xs font-bold text-emerald-300 hover:text-white transition-all shadow-sm active:scale-95 glow-green"
+                      title="فتح مجلد التنزيلات في جهازك"
+                    >
+                      <FolderOpen className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>فتح المجلد</span>
+                    </button>
+                  ) : (
+                    <a
+                      href={`/api/transfer/download/${activeTransfer.id}/0`}
+                      download={activeTransfer.firstFileName}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-xs font-bold text-emerald-300 hover:text-white transition-all shadow-sm active:scale-95 glow-green"
+                      title="تحميل الملف إلى جهازك"
+                    >
+                      <DownloadCloud className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>تنزيل</span>
+                    </a>
+                  )}
+                </div>
               )}
 
               {isCompleted && !isIncoming && (

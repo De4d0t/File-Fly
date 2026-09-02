@@ -6,15 +6,16 @@ import {
   ArrowDownLeft, 
   FolderOpen, 
   FileText, 
-  CheckCircle2,
+  CheckCircle2, 
   Calendar,
-  DownloadCloud
+  DownloadCloud,
+  Play
 } from 'lucide-react';
 import { useFileFly } from '../context/FileFlyContext.jsx';
 import { formatBytes } from '../utils/formatters.js';
 
 export default function HistoryModal() {
-  const { isHistoryModalOpen, setIsHistoryModalOpen, history, openDownloadsFolder, isHostMachine } = useFileFly();
+  const { isHistoryModalOpen, setIsHistoryModalOpen, history, openDownloadsFolder, openFile, isHostMachine } = useFileFly();
 
   if (!isHistoryModalOpen) return null;
 
@@ -97,8 +98,8 @@ export default function HistoryModal() {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3 shrink-0">
-                    <div className="text-left">
+                  <div className="flex items-center gap-2 shrink-0">
+                    <div className="text-left ml-1">
                       <div className="font-mono text-xs font-bold text-white">
                         {formatBytes(item.totalBytes)}
                       </div>
@@ -108,14 +109,32 @@ export default function HistoryModal() {
                       </div>
                     </div>
 
-                    {item.id && (
+                    {/* Option 1: Open / Play File */}
+                    <button
+                      onClick={() => openFile(item)}
+                      className="p-2 rounded-xl bg-sky-500/15 hover:bg-sky-500/30 text-sky-300 hover:text-white border border-sky-500/30 transition-all active:scale-95 shadow-sm"
+                      title="تشغيل أو فتح الملف"
+                    >
+                      <Play className="w-3.5 h-3.5 fill-current text-sky-400" />
+                    </button>
+
+                    {/* Option 2: Open Containing Folder or Download */}
+                    {isHostMachine ? (
+                      <button
+                        onClick={openDownloadsFolder}
+                        className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 hover:text-amber-300 border border-slate-700 transition-all active:scale-95 shadow-sm"
+                        title="فتح مجلد التنزيلات"
+                      >
+                        <FolderOpen className="w-3.5 h-3.5" />
+                      </button>
+                    ) : item.id && (
                       <a
                         href={`/api/transfer/download/${item.id}/0`}
                         download={item.firstFileName}
-                        className="p-2 rounded-xl bg-slate-800 hover:bg-emerald-500/20 text-slate-300 hover:text-emerald-400 border border-slate-700 hover:border-emerald-500/40 transition-colors"
+                        className="p-2 rounded-xl bg-slate-800 hover:bg-emerald-500/20 text-slate-300 hover:text-emerald-400 border border-slate-700 hover:border-emerald-500/40 transition-all active:scale-95 shadow-sm"
                         title="تحميل الملف إلى جهازك"
                       >
-                        <DownloadCloud className="w-4 h-4" />
+                        <DownloadCloud className="w-3.5 h-3.5" />
                       </a>
                     )}
                   </div>
