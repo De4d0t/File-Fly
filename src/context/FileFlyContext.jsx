@@ -472,6 +472,10 @@ export function FileFlyProvider({ children }) {
           };
         }
         if (!prev || (prev.id && prev.id !== progress.id)) {
+          // If we currently have an outgoing transfer in progress, do not overwrite it with incoming progress
+          if (prev?.direction === 'outgoing') {
+            return prev;
+          }
           return {
             id: progress.id,
             direction: 'incoming',
@@ -838,6 +842,7 @@ export function FileFlyProvider({ children }) {
             direction: 'outgoing',
             partnerName: peer.name,
             filesCount: totalFilesCount,
+            files: [currentFile],
             firstFileName: `${currentFile.name} (${i + 1} من ${totalFilesCount})`,
             totalBytes: currentFile.size || 0,
             bytesTransferred: 0,

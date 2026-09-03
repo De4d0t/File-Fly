@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { 
   ArrowUpRight, 
   ArrowDownLeft, 
@@ -49,6 +49,17 @@ export default function ActiveTransfers() {
   const isMobile = Boolean(isMobileClient || isIOS || (typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent || '')));
 
   const autoDownloadedRef = useRef(false);
+  const [senderCountdown, setSenderCountdown] = useState(60);
+
+  useEffect(() => {
+    if (activeTransfer?.status === 'waiting_approval') {
+      setSenderCountdown(60);
+      const interval = setInterval(() => {
+        setSenderCountdown((prev) => (prev > 0 ? prev - 1 : 0));
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [transferId, activeTransfer?.status]);
 
   useEffect(() => {
     autoDownloadedRef.current = false;
@@ -551,22 +562,12 @@ export default function ActiveTransfers() {
                   : `إرسال إلى ${activeTransfer.partnerName}`}
               </div>
 
-              {/* File details pill with mini-icon */}
-              <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-slate-300 overflow-hidden">
-                <span className="flex items-center gap-1 bg-slate-900/80 px-2 py-0.5 rounded-md border border-slate-800 shrink-0">
-                  {getFileIcon(activeTransfer.firstFileName)}
-                  <span className="truncate max-w-[190px] sm:max-w-[240px] font-medium text-slate-200" title={activeTransfer.firstFileName}>
-                    {activeTransfer.firstFileName}
-                  </span>
-                  {activeTransfer.filesCount > 1 && (
-                    <span className="text-[10px] text-sky-400 font-mono">
-                      (+{activeTransfer.filesCount - 1})
-                    </span>
-                  )}
-                </span>
-                
-                {/* File size in clean LTR mono */}
-                <span className="text-slate-400 font-mono text-[10px] shrink-0" dir="ltr">
+              {/* Partner Name & Total Size info */}
+              <div className="flex items-center gap-1.5 mt-1 text-[11px] text-slate-400">
+                <span>إلى:</span>
+                <span className="text-sky-300 font-semibold px-1.5 py-0.2 rounded bg-sky-500/10 border border-sky-500/20">{activeTransfer.partnerName}</span>
+                <span className="text-slate-600">•</span>
+                <span className="font-mono text-emerald-400 font-semibold text-[10px]" dir="ltr">
                   {formatBytes(activeTransfer.totalBytes)}
                 </span>
               </div>
@@ -599,60 +600,84 @@ export default function ActiveTransfers() {
           </div>
         )}
 
-        {/* Status: Waiting for approval */}
+        {/* Status: Waiting for approval with countdown timer bar */}
         {isWaitingApproval && (
-          <div className="flex items-center gap-2 py-2.5 px-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-medium mb-2.5">
-            <Loader2 className="w-4 h-4 animate-spin shrink-0" />
-            <span>طلب النقل معروض على شاشة المستلم للموافقة...</span>
+          <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/25 mb-3">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <div className="flex items-center gap-2 text-xs font-semibold text-amber-300">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400 shrink-0" />
+                <span>طلب النقل معروض على شاشة المستلم...</span>
+              </div>
+              <div className="flex items-center gap-1 font-mono text-[11px] bg-amber-500/20 border border-amber-500/30 px-2 py-0.5 rounded-lg text-amber-200 shrink-0" dir="ltr">
+                <Clock className="w-3 h-3 text-amber-400" />
+                <span>{senderCountdown}s</span>
+              </div>
+            </div>
+
+            {/* Countdown Progress Bar */}
+            <div className="relative w-full h-1.5 bg-slate-900 rounded-full overflow-hidden border border-amber-500/20">
+              <div
+                className="h-full bg-gradient-to-r from-red-500 via-amber-400 to-emerald-400 transition-all duration-1000 ease-linear rounded-full"
+                style={{ width: `${(senderCountdown / 60) * 100}%` }}
+              />
+            </div>
           </div>
         )}
 
         {/* Outgoing Files List with Cancel (✕) on individual files */}
-        {Array.isArray(activeTransfer.files) && activeTransfer.files.length > 0 && !isDeclined && !isTimeout && !isCompleted && (
-          <div className="mb-2.5">
-            <div className="text-[11px] font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
-              <span>الملفات الجاري إرسالها ({activeTransfer.files.length}):</span>
-              {isWaitingApproval && (
-                <span className="text-[10px] text-amber-400 font-mono">
-                  انقر ✕ لإلغاء أي ملف
+        {(() => {
+          const outgoingFilesList = Array.isArray(activeTransfer.files) && activeTransfer.files.length > 0
+            ? activeTransfer.files
+            : [{ name: activeTransfer.firstFileName || 'ملف', size: activeTransfer.totalBytes || 0 }];
+
+          if (outgoingFilesList.length === 0 || isDeclined || isTimeout || isCompleted) return null;
+
+          return (
+            <div className="mb-2.5">
+              <div className="text-xs font-semibold text-slate-300 mb-2 flex items-center justify-between">
+                <span>الملفات المختارة للإرسال ({outgoingFilesList.length}):</span>
+                <span className="text-[10px] text-slate-400 font-mono">
+                  {outgoingFilesList.length === 1 ? 'ملف واحد' : `${outgoingFilesList.length} ملفات`}
                 </span>
-              )}
-            </div>
+              </div>
 
-            <div className="rounded-xl bg-slate-900/90 border border-slate-800 p-1.5 max-h-36 overflow-y-auto space-y-1 custom-scrollbar">
-              {activeTransfer.files.map((file, idx) => (
-                <div
-                  key={idx}
-                  className="flex items-center justify-between gap-2 p-1.5 rounded-lg bg-slate-800/50 hover:bg-slate-800/80 border border-slate-700/40 text-xs transition-colors"
-                >
-                  <div className="flex items-center gap-2 min-w-0 flex-1">
-                    <div className="shrink-0">{getFileIcon(file.name)}</div>
-                    <span className="truncate text-slate-200 text-[11px] font-medium" title={file.name}>
-                      {file.name}
-                    </span>
-                  </div>
+              <div className="rounded-2xl bg-slate-900/90 border border-slate-800 p-2 max-h-40 overflow-y-auto space-y-1.5 custom-scrollbar">
+                {outgoingFilesList.map((file, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center justify-between gap-2.5 p-2 rounded-xl bg-slate-800/40 hover:bg-slate-800/70 border border-slate-700/40 text-xs transition-colors"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <div className="w-7 h-7 rounded-lg bg-slate-900/80 flex items-center justify-center shrink-0 border border-slate-700/60">
+                        {getFileIcon(file.name)}
+                      </div>
+                      <span className="truncate text-slate-200 text-xs font-medium" title={file.name}>
+                        {file.name}
+                      </span>
+                    </div>
 
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <span className="text-slate-400 font-mono text-[10px]" dir="ltr">
-                      {formatBytes(file.size)}
-                    </span>
-                    {/* X button: cancel single file before recipient accepts */}
-                    {isWaitingApproval && (
-                      <button
-                        type="button"
-                        onClick={() => removeSenderFile(file.name)}
-                        className="w-5 h-5 rounded-md bg-slate-900 hover:bg-red-500/20 text-slate-400 hover:text-red-400 border border-slate-700/60 hover:border-red-500/40 flex items-center justify-center transition-all cursor-pointer active:scale-90"
-                        title="إلغاء إرسال هذا الملف"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    )}
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-slate-400 font-mono text-[10px] bg-slate-900/60 px-2 py-0.5 rounded-md border border-slate-800" dir="ltr">
+                        {formatBytes(file.size)}
+                      </span>
+                      {/* X button: cancel single file before recipient accepts */}
+                      {isWaitingApproval && (
+                        <button
+                          type="button"
+                          onClick={() => removeSenderFile(file.name)}
+                          className="w-6 h-6 rounded-lg bg-slate-900/90 hover:bg-red-500/20 text-slate-400 hover:text-red-400 border border-slate-700/70 hover:border-red-500/50 flex items-center justify-center transition-all cursor-pointer active:scale-90"
+                          title="إلغاء إرسال هذا الملف"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Status: Active Transfer Progress Bar & Live Metrics */}
         {!isWaitingApproval && !isDeclined && !isTimeout && !isError && (

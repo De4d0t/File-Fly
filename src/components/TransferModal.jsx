@@ -302,9 +302,6 @@ export default function TransferModal() {
         <div className="mb-5">
           <div className="text-xs font-semibold text-slate-300 mb-2 flex items-center justify-between">
             <span>قائمة الملفات المرسلة:</span>
-            <span className="text-[11px] text-amber-400/90 font-mono flex items-center gap-1">
-              <span>انقر ✕ لإلغاء أي ملف</span>
-            </span>
           </div>
 
           <div className="rounded-2xl bg-slate-900/90 border border-slate-800 p-2.5 max-h-48 overflow-y-auto space-y-1.5 custom-scrollbar">
