@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { socketService } from '../services/socketClient.js';
-import { requestTransferToPeer, uploadFilesToPeer, checkTransferApproval } from '../services/fileSender.js';
+import { requestTransferToPeer, uploadFilesToPeer, checkTransferApproval, cancelTransferOnPeer } from '../services/fileSender.js';
 import { 
   playTransferRequestSound, 
   playTransferAcceptedSound,
@@ -197,6 +197,8 @@ export function FileFlyProvider({ children }) {
 
   // Active XHR upload controller reference
   const uploadControllerRef = useRef(null);
+  const cancelledTransfersRef = useRef(new Set());
+  const activeBatchRef = useRef(null);
 
   const hostDeviceRef = useRef(null);
   const myDeviceRef = useRef(myDevice);
@@ -348,6 +350,43 @@ export function FileFlyProvider({ children }) {
         return;
       }
 
+      // 3. AUTO-ACCEPT SUBSEQUENT BATCH FILES:
+      // If this file belongs to an already accepted batch from the same sender, accept automatically!
+      if (
+        transfer.batch?.batchId &&
+        transfer.batch.current > 1 &&
+        activeBatchRef.current?.batchId === transfer.batch.batchId &&
+        Date.now() < activeBatchRef.current?.expiresAt
+      ) {
+        socketService.send('TRANSFER_DECISION', {
+          transferId: transfer.id,
+          decision: 'accept',
+          responderId: currentId,
+        });
+
+        fetch('/api/transfer/respond', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ transferId: transfer.id, decision: 'accept', responderId: currentId }),
+        }).catch(() => {});
+
+        setActiveTransfer({
+          id: transfer.id,
+          direction: 'incoming',
+          partnerName: transfer.sender.name,
+          filesCount: 1,
+          files: transfer.files,
+          firstFileName: transfer.files[0]?.name || 'ملف',
+          totalBytes: transfer.totalBytes,
+          bytesTransferred: 0,
+          percentage: 0,
+          speedBps: 0,
+          status: 'transferring',
+          batch: transfer.batch,
+        });
+        return;
+      }
+
       // Automatically dismiss any open modal so transfer request is immediately unobstructed
       setIsQrModalOpen(false);
       setIsHistoryModalOpen(false);
@@ -378,9 +417,60 @@ export function FileFlyProvider({ children }) {
       }
     });
 
+    // Transfer updated (e.g. sender removed a file before recipient accepts)
+    const unsubUpdated = socketService.on('TRANSFER_UPDATED', (transfer) => {
+      setPendingIncomingRequest((prev) => {
+        if (prev?.id === transfer.id) {
+          return {
+            ...prev,
+            files: transfer.files,
+            totalBytes: transfer.totalBytes,
+          };
+        }
+        return prev;
+      });
+
+      setActiveTransfer((prev) => {
+        if (prev?.id === transfer.id) {
+          return {
+            ...prev,
+            files: transfer.files,
+            filesCount: transfer.files?.length || 0,
+            firstFileName: transfer.files?.[0]?.name || 'ملفات',
+            totalBytes: transfer.totalBytes,
+          };
+        }
+        return prev;
+      });
+    });
+
     // Live progress for incoming & outgoing files
     const unsubProgress = socketService.on('TRANSFER_PROGRESS', (progress) => {
       setActiveTransfer((prev) => {
+        // STRICT ISOLATION: Ignore if this device is not involved in this transfer
+        const isMyTransfer = 
+          prev?.id === progress.id ||
+          progress.senderId === myDevice?.id ||
+          progress.recipientId === myDevice?.id ||
+          (isHostMachine && (progress.recipientId === 'host' || progress.recipientId === hostDeviceRef.current?.id || progress.recipientId === myDevice?.id));
+
+        if (!isMyTransfer) {
+          return prev;
+        }
+
+        if (prev?.status === 'completed' || prev?.status === 'declined') {
+          return prev;
+        }
+        if (progress.percentage >= 100) {
+          return {
+            ...prev,
+            bytesTransferred: progress.totalBytes || prev?.totalBytes || 0,
+            totalBytes: progress.totalBytes || prev?.totalBytes || 0,
+            percentage: 100,
+            speedBps: progress.speedBps || 0,
+            status: 'completed',
+          };
+        }
         if (!prev || (prev.id && prev.id !== progress.id)) {
           return {
             id: progress.id,
@@ -408,14 +498,37 @@ export function FileFlyProvider({ children }) {
 
     // Transfer completed
     const unsubCompleted = socketService.on('TRANSFER_COMPLETED', (transfer) => {
+      // STRICT ISOLATION: Ignore if this device is not the sender and not the intended recipient
+      const isSender = transfer.sender?.id === myDevice?.id;
+      const isRecipient = transfer.recipient?.id === myDevice?.id || 
+                          (isHostMachine && (transfer.recipient?.id === 'host' || transfer.recipient?.id === hostDeviceRef.current?.id || transfer.recipient?.id === myDevice?.id));
+      const isMyActiveSession = activeTransfer?.id === transfer.id;
+
+      if (!isSender && !isRecipient && !isMyActiveSession) {
+        // Third-party device on network (e.g. desktop when phone sends to laptop). Ignore completely!
+        return;
+      }
+
       playSuccessSound();
+      const isIncomingTransfer = Boolean(
+        transfer.direction === 'incoming' || 
+        isRecipient || 
+        activeTransfer?.direction === 'incoming'
+      );
+
       setActiveTransfer((prev) => {
         const id = transfer.id || prev?.id;
         const firstFileName = transfer.historyItem?.firstFileName || transfer.firstFileName || prev?.firstFileName || 'ملف';
-        const isIncoming = prev?.direction === 'incoming' || transfer.direction === 'incoming';
+        const isIncoming = isIncomingTransfer || prev?.direction === 'incoming';
 
         // Keep completed transfer state for user interaction without automatically opening the file
         const resolvedCount = transfer.files?.length || transfer.historyItem?.filesCount || prev?.filesCount || 1;
+
+        const resolvedSavedPath = transfer.savedPath || transfer.historyItem?.savedPath || transfer.files?.[0]?.savedPath || prev?.savedPath || null;
+        const resolvedFiles = (transfer.files || transfer.historyItem?.files || prev?.files || []).map((f, idx) => ({
+          ...f,
+          savedPath: f.savedPath || (idx === 0 ? resolvedSavedPath : null),
+        }));
 
         if (!prev || (prev.id && prev.id !== transfer.id)) {
           return {
@@ -423,6 +536,8 @@ export function FileFlyProvider({ children }) {
             direction: isIncoming ? 'incoming' : 'outgoing',
             partnerName: transfer.sender?.name || prev?.partnerName || 'جهاز',
             filesCount: resolvedCount,
+            files: resolvedFiles,
+            savedPath: resolvedSavedPath,
             firstFileName,
             totalBytes: transfer.totalBytes || 0,
             bytesTransferred: transfer.totalBytes || 0,
@@ -436,6 +551,8 @@ export function FileFlyProvider({ children }) {
           percentage: 100, 
           bytesTransferred: prev.totalBytes,
           filesCount: resolvedCount,
+          files: resolvedFiles.length ? resolvedFiles : (prev?.files || []),
+          savedPath: resolvedSavedPath,
         };
       });
 
@@ -450,9 +567,9 @@ export function FileFlyProvider({ children }) {
         setHistory((prev) => [transfer.historyItem, ...prev]);
       }
 
-      // Keep completion card visible for 25 seconds so receiver can easily click Save or Preview
+      // Keep outgoing completion visible for 25s; incoming remains until receiver clicks dismiss or 3 mins
       setTimeout(() => {
-        setActiveTransfer((curr) => (curr?.status === 'completed' ? null : curr));
+        setActiveTransfer((curr) => (curr?.status === 'completed' && curr?.direction !== 'incoming' ? null : curr));
       }, 25000);
     });
 
@@ -501,12 +618,46 @@ export function FileFlyProvider({ children }) {
       unsubScanStatus();
       unsubDevice();
       unsubRequest();
+      unsubUpdated();
       unsubProgress();
       unsubCompleted();
       unsubDeclined();
       unsubCancelled();
     };
   }, [isHostMachine]);
+
+  // Safety polling fallback for incoming transfers so completion is never missed on mobile/browser
+  useEffect(() => {
+    if (!activeTransfer || activeTransfer.direction !== 'incoming' || activeTransfer.status !== 'transferring' || !activeTransfer.id) {
+      return;
+    }
+
+    const transferId = activeTransfer.id;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/transfer/status/${encodeURIComponent(transferId)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.status === 'completed') {
+            playSuccessSound();
+            setActiveTransfer((curr) => {
+              if (curr?.id === transferId && curr?.status !== 'completed') {
+                return {
+                  ...curr,
+                  status: 'completed',
+                  percentage: 100,
+                  bytesTransferred: curr.totalBytes || data.totalBytes || curr.bytesTransferred,
+                };
+              }
+              return curr;
+            });
+          }
+        }
+      } catch (_) {}
+    }, 1200);
+
+    return () => clearInterval(interval);
+  }, [activeTransfer?.id, activeTransfer?.direction, activeTransfer?.status]);
 
   // Toggle Visibility (مكشوف / مخفي)
   const toggleVisibility = async () => {
@@ -564,26 +715,57 @@ export function FileFlyProvider({ children }) {
     toggleRadar();
   };
 
-  // Accept or decline incoming transfer
-  const respondToIncomingRequest = async (decision) => {
+  // Accept or decline incoming transfer (supports partial accepted files)
+  const respondToIncomingRequest = async (decision, acceptedFiles = null) => {
     if (!pendingIncomingRequest) return;
     const request = pendingIncomingRequest;
     const transferId = request.id;
 
     if (decision === 'accept') {
+      const finalFiles = Array.isArray(acceptedFiles) && acceptedFiles.length > 0
+        ? acceptedFiles
+        : request.files;
+      const finalTotalBytes = finalFiles.reduce((acc, f) => acc + (f.size || 0), 0);
+      const acceptedFileNames = finalFiles.map((f) => f.name);
+
+      if (request.batch?.batchId) {
+        activeBatchRef.current = {
+          batchId: request.batch.batchId,
+          expiresAt: Date.now() + 300000, // 5 minutes validity
+        };
+      }
+
       setActiveTransfer({
         id: transferId,
         direction: 'incoming',
         partnerName: request.sender.name,
-        filesCount: request.files.length,
-        firstFileName: request.files[0]?.name || 'ملفات',
-        totalBytes: request.totalBytes,
+        filesCount: request.batch?.total || finalFiles.length,
+        files: finalFiles,
+        firstFileName: finalFiles[0]?.name || 'ملفات',
+        totalBytes: finalTotalBytes,
         bytesTransferred: 0,
         percentage: 0,
         speedBps: 0,
         status: 'transferring',
+        batch: request.batch || null,
       });
+
+      socketService.send('TRANSFER_DECISION', {
+        transferId: transferId,
+        decision: 'accept',
+        responderId: myDevice.id,
+        acceptedFileNames,
+      });
+
+      try {
+        await fetch('/api/transfer/respond', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ transferId, decision: 'accept', responderId: myDevice.id, acceptedFileNames }),
+        });
+      } catch (e) {}
     } else {
+      activeBatchRef.current = null;
       playDeclinedSound();
       socketService.send('TRANSFER_DECISION', {
         transferId: transferId,
@@ -605,17 +787,17 @@ export function FileFlyProvider({ children }) {
       setTimeout(() => {
         setActiveTransfer((curr) => (curr?.isReceiverDeclined ? null : curr));
       }, 3500);
+
+      try {
+        await fetch('/api/transfer/respond', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ transferId, decision: 'decline', responderId: myDevice.id }),
+        });
+      } catch (e) {}
     }
 
     setPendingIncomingRequest(null);
-
-    try {
-      await fetch('/api/transfer/respond', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ transferId, decision, responderId: myDevice.id }),
-      });
-    } catch (e) {}
   };
 
   // Initiate sending files to a peer
@@ -623,46 +805,229 @@ export function FileFlyProvider({ children }) {
     if (!fileList || fileList.length === 0) return;
 
     const files = Array.from(fileList);
-    const totalBytes = files.reduce((acc, f) => acc + (f.size || 0), 0);
+    const isRecipientPhone = Boolean(
+      peer.os === 'ios' ||
+      peer.os === 'android' ||
+      /iphone|ipad|ipod|android|mobile/i.test(peer.name || '')
+    );
 
-    // Set initial waiting transfer state
+    // ─────────────────────────────────────────────────────────────
+    // 1. MOBILE PHONE RECIPIENT ONLY: Send sequentially file by file
+    // ─────────────────────────────────────────────────────────────
+    if (isRecipientPhone && files.length > 1) {
+      const totalFilesCount = files.length;
+      const batchId = generateUUID();
+
+      try {
+        for (let i = 0; i < totalFilesCount; i++) {
+          if (cancelledTransfersRef.current.has(batchId)) {
+            console.log('[FileFly] Sequential transfer cancelled by user');
+            return;
+          }
+
+          const currentFile = files[i];
+          const singleFileList = [currentFile];
+          const batchInfo = {
+            batchId,
+            current: i + 1,
+            total: totalFilesCount,
+          };
+
+          const transferState = {
+            id: null,
+            direction: 'outgoing',
+            partnerName: peer.name,
+            filesCount: totalFilesCount,
+            firstFileName: `${currentFile.name} (${i + 1} من ${totalFilesCount})`,
+            totalBytes: currentFile.size || 0,
+            bytesTransferred: 0,
+            percentage: 0,
+            speedBps: 0,
+            status: i === 0 ? 'waiting_approval' : 'transferring',
+            batch: batchInfo,
+          };
+
+          setActiveTransfer(transferState);
+
+          // Step 1: Send transfer request for single file
+          const { transferId, targetBaseUrl } = await requestTransferToPeer(peer, singleFileList, myDevice, batchInfo);
+          transferState.id = transferId;
+          transferState.targetBaseUrl = targetBaseUrl;
+          setActiveTransfer({ ...transferState });
+
+          // Step 2: Poll for recipient response
+          let approved = false;
+          let checkAttempts = 0;
+          const maxAttempts = 60;
+
+          while (!approved && checkAttempts < maxAttempts) {
+            if (cancelledTransfersRef.current.has(transferId) || cancelledTransfersRef.current.has(batchId)) {
+              return;
+            }
+            await new Promise((r) => setTimeout(r, i === 0 ? 1000 : 400));
+            if (cancelledTransfersRef.current.has(transferId) || cancelledTransfersRef.current.has(batchId)) {
+              return;
+            }
+            checkAttempts++;
+            const statusResponse = await checkTransferApproval(targetBaseUrl, transferId);
+            if (statusResponse.status === 'accepted') {
+              approved = true;
+              break;
+            }
+            if (statusResponse.status === 'declined' || statusResponse.status === 'cancelled') {
+              playDeclinedSound();
+              setActiveTransfer({ ...transferState, status: 'declined' });
+              setTimeout(() => {
+                setActiveTransfer((curr) => (curr?.status === 'declined' ? null : curr));
+              }, 6000);
+              return;
+            }
+          }
+
+          if (!approved) {
+            setActiveTransfer({ ...transferState, status: 'timeout' });
+            setTimeout(() => {
+              setActiveTransfer((curr) => (curr?.status === 'timeout' ? null : curr));
+            }, 6000);
+            return;
+          }
+
+          // Step 3: Stream file upload
+          transferState.status = 'transferring';
+          setActiveTransfer({ ...transferState });
+
+          await new Promise((resolve, reject) => {
+            uploadControllerRef.current = uploadFilesToPeer(
+              targetBaseUrl,
+              transferId,
+              singleFileList,
+              (progress) => {
+                setActiveTransfer((prev) => {
+                  if (!prev) return prev;
+                  return {
+                    ...prev,
+                    bytesTransferred: progress.loaded,
+                    totalBytes: progress.total,
+                    percentage: progress.percentage,
+                    speedBps: progress.speedBps,
+                    status: 'transferring',
+                  };
+                });
+                socketService.send('CLIENT_TRANSFER_PROGRESS', {
+                  id: transferId,
+                  bytesTransferred: progress.loaded,
+                  totalBytes: progress.total,
+                  percentage: progress.percentage,
+                  speedBps: progress.speedBps,
+                });
+              },
+              () => {
+                socketService.send('CLIENT_TRANSFER_COMPLETED', { id: transferId });
+                resolve();
+              },
+              (err) => reject(err)
+            );
+          });
+
+          setHistory((prev) => [
+            {
+              id: transferId,
+              direction: 'outgoing',
+              partnerName: peer.name,
+              filesCount: 1,
+              firstFileName: currentFile.name,
+              totalBytes: currentFile.size,
+              completedAt: Date.now(),
+            },
+            ...prev,
+          ]);
+
+          if (i < totalFilesCount - 1) {
+            setActiveTransfer((prev) => prev ? {
+              ...prev,
+              percentage: 100,
+              status: 'transferring',
+              firstFileName: `تم نقل ${currentFile.name}، جاري بدء الملف التالي (${i + 2}/${totalFilesCount})...`,
+            } : null);
+            await new Promise((r) => setTimeout(r, 2000));
+          }
+        }
+
+        playSuccessSound();
+        setActiveTransfer((prev) => prev ? { ...prev, status: 'completed', percentage: 100 } : null);
+        setTimeout(() => {
+          setActiveTransfer((curr) => (curr?.status === 'completed' ? null : curr));
+        }, 7000);
+      } catch (err) {
+        playDeclinedSound();
+        console.error('Sequential transfer failed:', err);
+        setActiveTransfer((prev) => ({
+          ...(prev || {}),
+          status: 'error',
+          errorMessage: err.message,
+        }));
+        setTimeout(() => {
+          setActiveTransfer((curr) => (curr?.status === 'error' ? null : curr));
+        }, 7000);
+      }
+      return;
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // 2. DESKTOP / PC RECIPIENT (or single file): Direct batch
+    // ─────────────────────────────────────────────────────────────
+    const totalBytes = files.reduce((acc, f) => acc + (f.size || 0), 0);
+    let filesToUpload = files;
+
     const transferState = {
       id: null,
       direction: 'outgoing',
       partnerName: peer.name,
       filesCount: files.length,
+      files,
       firstFileName: files[0]?.name || 'ملف',
       totalBytes,
       bytesTransferred: 0,
       percentage: 0,
       speedBps: 0,
-      status: 'waiting_approval', // waiting_approval -> transferring -> completed
+      status: 'waiting_approval',
+      batch: null,
     };
 
     setActiveTransfer(transferState);
 
     try {
-      // Step 1: Send transfer request
-      const { transferId, targetBaseUrl } = await requestTransferToPeer(peer, files, myDevice);
+      // Step 1: Send transfer request for all files
+      const { transferId, targetBaseUrl } = await requestTransferToPeer(peer, files, myDevice, null);
       transferState.id = transferId;
+      transferState.targetBaseUrl = targetBaseUrl;
       setActiveTransfer({ ...transferState });
 
       // Step 2: Poll for recipient response
       let approved = false;
       let checkAttempts = 0;
-      const maxAttempts = 60; // 60 seconds timeout
+      const maxAttempts = 60;
 
       while (!approved && checkAttempts < maxAttempts) {
+        if (cancelledTransfersRef.current.has(transferId)) {
+          return;
+        }
         await new Promise((r) => setTimeout(r, 1000));
+        if (cancelledTransfersRef.current.has(transferId)) {
+          return;
+        }
         checkAttempts++;
-
         const statusResponse = await checkTransferApproval(targetBaseUrl, transferId);
-        
         if (statusResponse.status === 'accepted') {
           approved = true;
+          if (Array.isArray(statusResponse.acceptedFileNames) && statusResponse.acceptedFileNames.length > 0) {
+            filesToUpload = files.filter((f) => statusResponse.acceptedFileNames.includes(f.name));
+            transferState.totalBytes = filesToUpload.reduce((acc, f) => acc + (f.size || 0), 0);
+            transferState.filesCount = filesToUpload.length;
+            transferState.firstFileName = filesToUpload[0]?.name || 'ملفات';
+          }
           break;
         }
-
         if (statusResponse.status === 'declined' || statusResponse.status === 'cancelled') {
           playDeclinedSound();
           setActiveTransfer({
@@ -671,7 +1036,7 @@ export function FileFlyProvider({ children }) {
           });
           setTimeout(() => {
             setActiveTransfer((curr) => (curr?.status === 'declined' ? null : curr));
-          }, 9000);
+          }, 6000);
           return;
         }
       }
@@ -683,18 +1048,33 @@ export function FileFlyProvider({ children }) {
         });
         setTimeout(() => {
           setActiveTransfer((curr) => (curr?.status === 'timeout' ? null : curr));
-        }, 8000);
+        }, 6000);
         return;
       }
 
-      // Step 3: Start uploading
+      // Filter by remaining files from activeTransferRef if sender cancelled any before approval
+      const liveRemainingFiles = activeTransferRef.current?.files;
+      if (Array.isArray(liveRemainingFiles) && liveRemainingFiles.length > 0) {
+        filesToUpload = filesToUpload.filter((f) => liveRemainingFiles.some((rf) => rf.name === f.name));
+      }
+
+      if (filesToUpload.length === 0) {
+        console.log('[FileFly] All outgoing files were cancelled by sender');
+        return;
+      }
+
+      // Step 3: Stream file upload for accepted files
       transferState.status = 'transferring';
+      transferState.files = filesToUpload;
+      transferState.filesCount = filesToUpload.length;
+      transferState.firstFileName = filesToUpload[0]?.name || 'ملفات';
+      transferState.totalBytes = filesToUpload.reduce((acc, f) => acc + (f.size || 0), 0);
       setActiveTransfer({ ...transferState });
 
       uploadControllerRef.current = uploadFilesToPeer(
         targetBaseUrl,
         transferId,
-        files,
+        filesToUpload,
         (progress) => {
           setActiveTransfer((prev) => {
             if (!prev) return prev;
@@ -708,7 +1088,6 @@ export function FileFlyProvider({ children }) {
             };
           });
 
-          // Relay live progress to recipient via WebSocket
           socketService.send('CLIENT_TRANSFER_PROGRESS', {
             id: transferId,
             bytesTransferred: progress.loaded,
@@ -718,21 +1097,21 @@ export function FileFlyProvider({ children }) {
           });
         },
         () => {
+          socketService.send('CLIENT_TRANSFER_COMPLETED', { id: transferId });
           playSuccessSound();
           setActiveTransfer((prev) => {
             if (!prev) return null;
             return { ...prev, status: 'completed', percentage: 100 };
           });
 
-          // Add to local history
           setHistory((prev) => [
             {
               id: transferId,
               direction: 'outgoing',
               partnerName: peer.name,
-              filesCount: files.length,
-              firstFileName: files[0]?.name || 'ملفات',
-              totalBytes,
+              filesCount: filesToUpload.length,
+              firstFileName: filesToUpload[0]?.name || 'ملفات',
+              totalBytes: filesToUpload.reduce((acc, f) => acc + (f.size || 0), 0),
               completedAt: Date.now(),
             },
             ...prev,
@@ -740,7 +1119,7 @@ export function FileFlyProvider({ children }) {
 
           setTimeout(() => {
             setActiveTransfer((curr) => (curr?.status === 'completed' ? null : curr));
-          }, 9000);
+          }, 6000);
         },
         (err) => {
           playDeclinedSound();
@@ -751,7 +1130,7 @@ export function FileFlyProvider({ children }) {
           });
           setTimeout(() => {
             setActiveTransfer((curr) => (curr?.status === 'error' ? null : curr));
-          }, 8000);
+          }, 6000);
         }
       );
     } catch (err) {
@@ -764,16 +1143,95 @@ export function FileFlyProvider({ children }) {
       });
       setTimeout(() => {
         setActiveTransfer((curr) => (curr?.status === 'error' ? null : curr));
-      }, 8000);
+      }, 6000);
     }
   };
 
-  // Cancel outgoing transfer
-  const cancelActiveTransfer = () => {
-    if (uploadControllerRef.current) {
-      uploadControllerRef.current.abort();
-    }
+  // Safely dismiss completed or idle transfer modal locally without notifying server
+  const dismissActiveTransfer = () => {
     setActiveTransfer(null);
+  };
+
+  // Cancel in-progress transfer
+  const cancelActiveTransfer = () => {
+    // If transfer is already completed, only dismiss locally; do not abort on server!
+    if (activeTransfer?.status === 'completed') {
+      setActiveTransfer(null);
+      return;
+    }
+
+    const transferId = activeTransfer?.id;
+    const targetBaseUrl = activeTransfer?.targetBaseUrl;
+
+    if (transferId) {
+      cancelledTransfersRef.current.add(transferId);
+
+      // 1. Notify local/host server via WebSocket
+      socketService.send('CANCEL_TRANSFER', {
+        transferId,
+        id: transferId,
+        reason: 'User cancelled request',
+      });
+
+      // 2. Notify target peer server via HTTP endpoint
+      cancelTransferOnPeer(targetBaseUrl, transferId, 'User cancelled request');
+    }
+
+    if (uploadControllerRef.current) {
+      try {
+        uploadControllerRef.current.abort();
+      } catch (_) {}
+      uploadControllerRef.current = null;
+    }
+
+    playDeclinedSound();
+    setActiveTransfer(null);
+  };
+
+  // Remove single file from an outgoing transfer before recipient approves
+  const removeSenderFile = async (fileName) => {
+    const current = activeTransferRef.current;
+    if (!current || !current.files || current.files.length === 0) return;
+
+    const remainingFiles = current.files.filter((f) => f.name !== fileName);
+    if (remainingFiles.length === 0) {
+      // If all files are cancelled, cancel the entire transfer
+      cancelActiveTransfer();
+      return;
+    }
+
+    const remainingTotalBytes = remainingFiles.reduce((acc, f) => acc + (f.size || 0), 0);
+    setActiveTransfer((prev) => {
+      if (!prev) return null;
+      return {
+        ...prev,
+        files: remainingFiles,
+        filesCount: remainingFiles.length,
+        firstFileName: remainingFiles[0]?.name || 'ملف',
+        totalBytes: remainingTotalBytes,
+      };
+    });
+
+    if (current.id) {
+      // 1. Instantly notify server via WebSocket
+      socketService.send('REMOVE_FILE_FROM_TRANSFER', {
+        transferId: current.id,
+        fileName,
+      });
+
+      // 2. Also send via HTTP endpoint for peer consistency
+      try {
+        const baseUrl = (current.targetBaseUrl || '').replace(/\/$/, '');
+        const targetUrl = baseUrl ? `${baseUrl}/api/transfer/remove-file` : '/api/transfer/remove-file';
+        await fetch(targetUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ transferId: current.id, fileName }),
+        });
+      } catch (e) {
+        console.error('Failed to notify peer of removed file via HTTP:', e);
+      }
+    }
   };
 
   // Open Downloads Folder in Explorer (on host PC or via API)
@@ -783,6 +1241,10 @@ export function FileFlyProvider({ children }) {
       filePath = itemOrPath;
     } else if (itemOrPath?.savedPath) {
       filePath = itemOrPath.savedPath;
+    } else if (itemOrPath?.files?.[0]?.savedPath) {
+      filePath = itemOrPath.files[0].savedPath;
+    } else if (itemOrPath?.historyItem?.savedPath) {
+      filePath = itemOrPath.historyItem.savedPath;
     }
 
     if (isHostMachine) {
@@ -806,7 +1268,19 @@ export function FileFlyProvider({ children }) {
         console.error('Failed to open downloads folder:', e);
       }
     } else {
-      setIsHistoryModalOpen(true);
+      // In web browser (e.g. Laptop 2): download file to browser Downloads
+      const transferId = itemOrPath?.id || activeTransfer?.id;
+      const fileName = itemOrPath?.firstFileName || activeTransfer?.firstFileName || 'downloaded_file';
+      if (transferId) {
+        const link = document.createElement('a');
+        link.href = `/api/transfer/download/${transferId}/0`;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } else {
+        setIsHistoryModalOpen(true);
+      }
     }
   };
 
@@ -879,6 +1353,8 @@ export function FileFlyProvider({ children }) {
         respondToIncomingRequest,
         sendFilesToDevice,
         cancelActiveTransfer,
+        removeSenderFile,
+        dismissActiveTransfer,
         reconnectSocket: () => socketService.reconnectNow(),
       }}
     >

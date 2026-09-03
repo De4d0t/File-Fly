@@ -33,6 +33,7 @@
   "author": "FileFly Team",
   "license": "MIT",
   "dependencies": {
+    "archiver": "^8.0.0",
     "cors": "^2.8.5",
     "express": "^4.21.2",
     "form-data": "^4.0.2",
@@ -49,7 +50,9 @@
     "concurrently": "^9.1.2",
     "electron": "^34.2.0",
     "electron-builder": "^26.15.3",
+    "png-to-ico": "^3.0.2",
     "postcss": "^8.5.2",
+    "sharp": "^0.35.4",
     "tailwindcss": "^3.4.17",
     "vite": "^6.1.0",
     "wait-on": "^8.0.2"

@@ -72,7 +72,9 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // API Routes
-app.use('/api', createRouter(config, discovery, transferEngine, PORT));
+const apiRouter = createRouter(config, discovery, transferEngine, PORT);
+app.use('/api', apiRouter);
+app.use('/transfer', apiRouter);
 
 // Serve Static Assets & Frontend (Vite build output & public)
 const publicPath = path.join(__dirname, '..', 'public');
@@ -231,14 +233,37 @@ wss.on('connection', (ws, req) => {
 
           const progressData = {
             id: transfer.id,
+            senderId: transfer.sender.id,
+            recipientId: transfer.recipient.id,
             bytesTransferred: transfer.bytesTransferred,
             totalBytes: transfer.totalBytes,
             speedBps: transfer.speedBps,
             percentage: payload.percentage !== undefined ? payload.percentage : (transfer.totalBytes > 0 ? Math.round((transfer.bytesTransferred / transfer.totalBytes) * 100) : 0),
           };
 
-          // Dispatch progress immediately to recipient and sender
-          dispatchEvent('TRANSFER_PROGRESS', progressData, [transfer.sender.id, transfer.recipient.id, config.id, 'host']);
+          const targetIds = [transfer.sender.id, transfer.recipient.id];
+          if (transfer.recipient.id === config.id || transfer.recipient.id === 'host') {
+            targetIds.push(config.id, 'host');
+          }
+
+          // Dispatch progress strictly to recipient and sender
+          dispatchEvent('TRANSFER_PROGRESS', progressData, targetIds);
+        }
+      } else if (type === 'CLIENT_TRANSFER_COMPLETED') {
+        const transferId = payload.id || payload.transferId;
+        if (transferId) {
+          transferEngine.completeTransfer(transferId);
+        }
+      } else if (type === 'CANCEL_TRANSFER') {
+        const transferId = payload.transferId || payload.id;
+        if (transferId) {
+          transferEngine.cancelTransfer(transferId, payload.reason || 'User cancelled');
+        }
+      } else if (type === 'REMOVE_FILE_FROM_TRANSFER') {
+        const transferId = payload.transferId || payload.id;
+        const fileName = payload.fileName || payload.name;
+        if (transferId && fileName) {
+          transferEngine.removeFileFromTransfer(transferId, fileName);
         }
       } else if (type === 'SET_RADAR') {
         const active = Boolean(payload.active);

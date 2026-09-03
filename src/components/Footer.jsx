@@ -23,9 +23,9 @@ const GitHubIcon = ({ className = 'w-4 h-4' }) => (
 
 export default function Footer() {
   return (
-    <footer className="w-full max-w-5xl mx-auto px-3 sm:px-6 pb-2 sm:pb-3 mt-auto shrink-0">
+    <footer className="w-full max-w-[560px] mx-auto px-3.5 sm:px-4 pb-3.5 sm:pb-4 mt-auto shrink-0">
       <div 
-        className="w-full rounded-xl sm:rounded-full glass-panel border border-slate-800/80 shadow-lg px-3.5 sm:px-6 py-1.5 sm:py-2 flex flex-row items-center justify-between gap-2 text-xs"
+        className="w-full rounded-xl sm:rounded-full glass-panel px-3.5 sm:px-6 py-2 sm:py-2.5 flex flex-row items-center justify-between gap-2 text-xs"
         dir="ltr"
       >
         {/* Left: Developed by Ahmed Al-Jaberi (Unclickable plain text matching same style) */}

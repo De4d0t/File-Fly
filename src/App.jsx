@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Component } from 'react';
 import Header from './components/Header.jsx';
 import DeviceGrid from './components/DeviceGrid.jsx';
 import TransferModal from './components/TransferModal.jsx';
@@ -10,6 +10,25 @@ import InstallModal from './components/InstallModal.jsx';
 import ServerOfflineModal from './components/ServerOfflineModal.jsx';
 import Footer from './components/Footer.jsx';
 import { useFileFly } from './context/FileFlyContext.jsx';
+
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, errorInfo) {
+    console.error('[FileFly ErrorBoundary]', error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback || null;
+    }
+    return this.props.children;
+  }
+}
 
 export default function App() {
   const { myDevice, isOnline } = useFileFly();
@@ -23,18 +42,20 @@ export default function App() {
       <Header />
 
       {/* Main Content Viewport */}
-      <main className="flex-1 max-w-5xl w-full mx-auto px-3 sm:px-6 pt-1 sm:pt-1.5 pb-2 flex flex-col justify-start">
+      <main className="flex-1 max-w-[560px] w-full mx-auto px-3.5 sm:px-4 pt-3.5 sm:pt-4 pb-3.5 sm:pb-4 flex flex-col justify-start">
         <DeviceGrid />
       </main>
 
       {/* Modals and Drawers */}
-      <TransferModal />
-      <ActiveTransfers />
-      <QrCodeModal />
-      <HistoryModal />
-      <RenameModal />
-      <InstallModal />
-      <ServerOfflineModal />
+      <ErrorBoundary>
+        <TransferModal />
+        <ActiveTransfers />
+        <QrCodeModal />
+        <HistoryModal />
+        <RenameModal />
+        <InstallModal />
+        <ServerOfflineModal />
+      </ErrorBoundary>
 
       {/* Professional & Minimalist App Footer */}
       <Footer />

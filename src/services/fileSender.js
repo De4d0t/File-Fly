@@ -2,7 +2,7 @@
  * High-speed file sender service with chunk/stream upload & progress tracking
  */
 
-export async function requestTransferToPeer(peer, files, myDevice) {
+export async function requestTransferToPeer(peer, files, myDevice, batch = null) {
   const fileMetaList = Array.from(files).map((file) => ({
     name: file.name,
     size: file.size,
@@ -34,6 +34,7 @@ export async function requestTransferToPeer(peer, files, myDevice) {
       ip: peer.ip,
     },
     files: fileMetaList,
+    batch: batch || null,
   };
 
   let response;
@@ -148,3 +149,22 @@ export function uploadFilesToPeer(targetBaseUrl, transferId, files, onProgress, 
     abort: () => xhr.abort(),
   };
 }
+
+/**
+ * Notifies recipient/server that the transfer has been cancelled by the user
+ */
+export async function cancelTransferOnPeer(targetBaseUrl, transferId, reason = 'User cancelled') {
+  if (!transferId) return;
+  try {
+    const localBaseUrl = typeof window !== 'undefined' ? window.location.origin : 'http://127.0.0.1:53316';
+    const url = targetBaseUrl || localBaseUrl;
+    await fetch(`${url}/api/transfer/cancel`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transferId, reason }),
+    });
+  } catch (err) {
+    console.warn('[fileSender] cancelTransferOnPeer failed:', err);
+  }
+}
+

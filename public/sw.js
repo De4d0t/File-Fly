@@ -1,5 +1,5 @@
 // FileFly Service Worker with dynamic asset caching
-const CACHE_NAME = 'filefly-shell-v4';
+const CACHE_NAME = 'filefly-shell-v35';
 const STATIC_ASSETS = [
   '/',
   '/manifest.json',

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, Notification } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Notification, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -43,15 +43,18 @@ let mainWindow = null;
 function createWindow() {
   const icoPath = path.join(__dirname, '..', 'public', 'icon.ico');
   const pngPath = path.join(__dirname, '..', 'public', 'icon-512.png');
-  const windowIcon = fs.existsSync(icoPath) ? icoPath : pngPath;
+  let windowIcon = null;
+  if (fs.existsSync(icoPath)) {
+    windowIcon = nativeImage.createFromPath(icoPath);
+  } else if (fs.existsSync(pngPath)) {
+    windowIcon = nativeImage.createFromPath(pngPath);
+  }
 
   mainWindow = new BrowserWindow({
-    width: 980,
+    width: 580,
     height: 750,
-    minWidth: 860,
-    minHeight: 640,
-    resizable: true,
-    maximizable: true,
+    resizable: false,
+    maximizable: false,
     fullscreenable: false,
     center: true,
     frame: false,
@@ -66,6 +69,10 @@ function createWindow() {
     },
     show: false,
   });
+
+  if (windowIcon && !windowIcon.isEmpty()) {
+    mainWindow.setIcon(windowIcon);
+  }
 
   mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
     const logLine = `[Level ${level}] ${message} at ${sourceId}:${line}\n`;
@@ -155,6 +162,56 @@ ipcMain.handle('shell:showInFolder', async (event, filePath) => {
 ipcMain.handle('shell:openDownloads', async (event, dirPath) => {
   const target = dirPath && fs.existsSync(dirPath) ? dirPath : app.getPath('downloads');
   return await shell.openPath(target);
+});
+
+// Native File Drag & Drop to Windows Desktop / Explorer
+ipcMain.on('ondragstart', (event, filePath) => {
+  let targetPath = filePath;
+  const downloadsDir = app.getPath('downloads');
+
+  if (!targetPath || !fs.existsSync(targetPath)) {
+    const base = path.basename(filePath || '');
+    const inFolder = path.join(downloadsDir, 'FileFly', base);
+    const inDownloads = path.join(downloadsDir, base);
+    if (fs.existsSync(inFolder)) {
+      targetPath = inFolder;
+    } else if (fs.existsSync(inDownloads)) {
+      targetPath = inDownloads;
+    }
+  }
+
+  try {
+    fs.appendFileSync(path.join(__dirname, 'renderer.log'), `[DRAG] filePath=${filePath} resolved=${targetPath} exists=${fs.existsSync(targetPath || '')}\n`);
+  } catch (_) {}
+
+  if (targetPath && fs.existsSync(targetPath)) {
+    const icoPath = path.join(__dirname, '..', 'public', 'icon.ico');
+    const pngPath = path.join(__dirname, '..', 'public', 'icon-512.png');
+    let dragIcon = null;
+    if (fs.existsSync(icoPath)) {
+      dragIcon = nativeImage.createFromPath(icoPath);
+    } else if (fs.existsSync(pngPath)) {
+      dragIcon = nativeImage.createFromPath(pngPath);
+    } else {
+      dragIcon = nativeImage.createEmpty();
+    }
+
+    if (dragIcon && !dragIcon.isEmpty()) {
+      try {
+        dragIcon = dragIcon.resize({ width: 48, height: 48 });
+      } catch (_) {}
+    }
+
+    try {
+      event.sender.startDrag({
+        file: path.resolve(targetPath),
+        icon: dragIcon,
+      });
+      fs.appendFileSync(path.join(__dirname, 'renderer.log'), `[DRAG SUCCESS] started dragging ${targetPath}\n`);
+    } catch (err) {
+      fs.appendFileSync(path.join(__dirname, 'renderer.log'), `[DRAG ERROR] ${err.message}\n`);
+    }
+  }
 });
 
 // System Notifications

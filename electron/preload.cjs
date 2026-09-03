@@ -18,4 +18,5 @@ contextBridge.exposeInMainWorld('fileflyDesktop', {
   showInFolder: (filePath) => ipcRenderer.invoke('shell:showInFolder', filePath),
   openDownloadsFolder: (dir) => ipcRenderer.invoke('shell:openDownloads', dir),
   showNotification: (title, body) => ipcRenderer.send('notify', { title, body }),
+  startDrag: (filePath) => ipcRenderer.send('ondragstart', filePath),
 });

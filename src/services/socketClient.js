@@ -42,6 +42,7 @@ class SocketClient {
 
       this.ws.onopen = () => {
         this.isConnected = true;
+        this.reconnectAttempts = 0;
         this.emit('connection_change', true);
         if (this.reconnectTimer) {
           clearTimeout(this.reconnectTimer);
@@ -74,12 +75,42 @@ class SocketClient {
     }
   }
 
+  async probeServerHealth() {
+    try {
+      const host = window.location.hostname || 'localhost';
+      const port = window.location.port === '5173' ? '53316' : (window.location.port || '53316');
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1500);
+
+      const res = await fetch(`http://${host}:${port}/api/health?_t=${Date.now()}`, {
+        cache: 'no-store',
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.status === 'ok') {
+          this.reconnectNow();
+          return data;
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
   scheduleReconnect() {
     if (this.reconnectTimer) return;
-    this.reconnectTimer = setTimeout(() => {
+    this.reconnectAttempts = (this.reconnectAttempts || 0) + 1;
+    const delay = Math.min(1000 + (this.reconnectAttempts * 400), 3500);
+
+    this.reconnectTimer = setTimeout(async () => {
       this.reconnectTimer = null;
-      this.connect();
-    }, 2500);
+      const alive = await this.probeServerHealth();
+      if (!alive) {
+        this.connect();
+      }
+    }, delay);
   }
 
   reconnectNow() {

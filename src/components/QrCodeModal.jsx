@@ -106,8 +106,6 @@ export default function QrCodeModal() {
   if (!isQrModalOpen) return null;
 
   const currentUrl = qrData.url || `http://${myDevice.ip}:${myDevice.port || 53316}`;
-  const port = qrData.port || myDevice.port || 53316;
-  const flyLocalUrl = `http://fly.local:${port}`;
 
   const handleCopy = (text, key) => {
     if (text) {
@@ -176,9 +174,8 @@ export default function QrCodeModal() {
           )}
         </div>
 
-        {/* Direct Links & Icon-Only Copy Buttons */}
-        <div className="space-y-2 mb-3.5">
-          {/* IP Direct Link */}
+        {/* Direct IP Link & Copy Button */}
+        <div className="mb-3.5">
           <div className="flex items-center gap-2 p-1.5 px-3 rounded-xl bg-slate-900 border border-slate-800">
             <span className="text-xs text-sky-400 font-mono flex-1 text-center truncate select-all">
               {currentUrl}
@@ -190,25 +187,6 @@ export default function QrCodeModal() {
               title="نسخ الرابط"
             >
               {copiedKey === 'ip' ? (
-                <Check className="w-3.5 h-3.5 text-emerald-400" />
-              ) : (
-                <Copy className="w-3.5 h-3.5" />
-              )}
-            </button>
-          </div>
-
-          {/* Quick mDNS fallback link */}
-          <div className="flex items-center gap-2 p-1.5 px-3 rounded-xl bg-slate-900/90 border border-slate-800">
-            <span className="text-xs text-emerald-400 font-mono flex-1 text-center truncate select-all">
-              {flyLocalUrl}
-            </span>
-
-            <button
-              onClick={() => handleCopy(flyLocalUrl, 'quick')}
-              className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors shrink-0 active:scale-95"
-              title="نسخ الرابط السريع"
-            >
-              {copiedKey === 'quick' ? (
                 <Check className="w-3.5 h-3.5 text-emerald-400" />
               ) : (
                 <Copy className="w-3.5 h-3.5" />

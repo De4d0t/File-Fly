@@ -2,7 +2,11 @@ import express from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
+
+const require = createRequire(import.meta.url);
+const archiver = require('archiver');
 import QRCode from 'qrcode';
 import { spawn, exec } from 'child_process';
 import os from 'os';
@@ -39,6 +43,21 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
       },
     }),
     limits: { fileSize: 1024 * 1024 * 1024 * 100 }, // 100GB limit
+  });
+
+  /**
+   * Health Probe endpoint for auto-reconnect & discovery
+   */
+  router.get('/health', (req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.json({
+      status: 'ok',
+      id: config.id,
+      name: config.name,
+      primaryIP: getPrimaryLocalIP(),
+      port: serverPort,
+      timestamp: Date.now(),
+    });
   });
 
   /**
@@ -148,13 +167,13 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
    * Request File Transfer
    */
   router.post('/transfer/request', (req, res) => {
-    const { sender, recipient, files } = req.body;
+    const { sender, recipient, files, batch } = req.body;
 
     if (!sender || !recipient || !files || !Array.isArray(files) || files.length === 0) {
       return res.status(400).json({ error: 'Sender, recipient, and files array are required' });
     }
 
-    const transfer = transferEngine.createTransferRequest(sender, recipient, files);
+    const transfer = transferEngine.createTransferRequest(sender, recipient, files, batch);
     res.json({
       success: true,
       transferId: transfer.id,
@@ -176,6 +195,8 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
       bytesTransferred: transfer.bytesTransferred,
       totalBytes: transfer.totalBytes,
       speedBps: transfer.speedBps,
+      savedPath: transfer.savedPath || transfer.files?.[0]?.savedPath || null,
+      acceptedFileNames: transfer.acceptedFileNames || null,
     });
   });
 
@@ -183,12 +204,36 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
    * Receiver responds to transfer request (Accept / Decline)
    */
   router.post('/transfer/respond', (req, res) => {
-    const { transferId, decision, responderId } = req.body;
+    const { transferId, decision, responderId, acceptedFileNames } = req.body;
     if (!transferId || !decision) {
       return res.status(400).json({ error: 'transferId and decision (accept/decline) are required' });
     }
 
-    const result = transferEngine.respondToTransfer(transferId, decision, responderId);
+    const result = transferEngine.respondToTransfer(transferId, decision, responderId, acceptedFileNames);
+    res.json(result);
+  });
+
+  /**
+   * Cancel transfer (sender or receiver cancels before or during transfer)
+   */
+  router.post('/transfer/cancel', (req, res) => {
+    const { transferId, reason } = req.body;
+    if (!transferId) {
+      return res.status(400).json({ error: 'transferId is required' });
+    }
+    transferEngine.cancelTransfer(transferId, reason || 'User cancelled');
+    res.json({ success: true, message: 'Transfer cancelled' });
+  });
+
+  /**
+   * Remove single file from transfer before or during request
+   */
+  router.post('/transfer/remove-file', (req, res) => {
+    const { transferId, fileName } = req.body;
+    if (!transferId || !fileName) {
+      return res.status(400).json({ error: 'transferId and fileName are required' });
+    }
+    const result = transferEngine.removeFileFromTransfer(transferId, fileName);
     res.json(result);
   });
 
@@ -298,19 +343,65 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
     
     // Check in active transfers or history
     let targetFile = transfer?.files?.[Number(fileIndex)];
-    if (!targetFile || !targetFile.savedPath) {
+    let filePath = targetFile?.savedPath;
+    let fileName = targetFile?.name;
+
+    if (!filePath || !fs.existsSync(filePath)) {
       const historyItem = transferEngine.getHistory().find((h) => h.id === transferId);
       if (historyItem && historyItem.savedPath && fs.existsSync(historyItem.savedPath)) {
-        return res.download(historyItem.savedPath, historyItem.firstFileName);
+        filePath = historyItem.savedPath;
+        fileName = historyItem.firstFileName;
       }
-      return res.status(404).json({ error: 'File not found' });
     }
 
-    if (fs.existsSync(targetFile.savedPath)) {
-      return res.download(targetFile.savedPath, targetFile.name);
+    if (filePath && fs.existsSync(filePath)) {
+      const safeName = fileName || path.basename(filePath);
+      const encodedName = encodeURIComponent(safeName);
+      res.setHeader('Content-Disposition', `attachment; filename="${safeName}"; filename*=UTF-8''${encodedName}`);
+      res.setHeader('Cache-Control', 'public, max-age=31536000');
+      return res.sendFile(path.resolve(filePath));
     }
 
-    res.status(404).json({ error: 'File on disk not found' });
+    res.status(404).json({ error: 'File not found' });
+  });
+
+  /**
+   * Download all files in a transfer bundled as a single ZIP archive (for mobile/multi-file)
+   */
+  router.get('/transfer/download-zip/:transferId', (req, res) => {
+    const { transferId } = req.params;
+    const transfer = transferEngine.getTransfer(transferId);
+    let files = transfer?.files || [];
+
+    if (!files.length) {
+      const historyItem = transferEngine.getHistory().find((h) => h.id === transferId);
+      if (historyItem && historyItem.savedPath) {
+        files = [{ name: historyItem.firstFileName, savedPath: historyItem.savedPath }];
+      }
+    }
+
+    const validFiles = files.filter((f) => f.savedPath && fs.existsSync(f.savedPath));
+    if (!validFiles.length) {
+      return res.status(404).json({ error: 'No files found on disk for this transfer' });
+    }
+
+    const zipFileName = `FileFly_${validFiles.length}_files.zip`;
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${zipFileName}"; filename*=UTF-8''${encodeURIComponent(zipFileName)}`);
+
+    const archive = archiver('zip', { zlib: { level: 5 } });
+    archive.on('error', (err) => {
+      console.error('Archive error:', err);
+      if (!res.headersSent) res.status(500).send({ error: err.message });
+    });
+
+    archive.pipe(res);
+
+    for (const f of validFiles) {
+      archive.file(f.savedPath, { name: f.name || path.basename(f.savedPath) });
+    }
+
+    archive.finalize();
   });
 
   /**

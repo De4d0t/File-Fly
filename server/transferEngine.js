@@ -55,12 +55,13 @@ export class TransferEngine {
   /**
    * Registers a transfer request strictly targeted from sender to recipient
    */
-  createTransferRequest(sender, recipient, files) {
+  createTransferRequest(sender, recipient, files, batch = null) {
     const transferId = crypto.randomUUID();
     const totalBytes = files.reduce((acc, f) => acc + (Number(f.size) || 0), 0);
 
     const transfer = {
       id: transferId,
+      batch: batch || null,
       sender: {
         id: sender.id,
         name: sender.name,
@@ -107,7 +108,7 @@ export class TransferEngine {
   /**
    * Handles recipient response (Accept / Decline) and notifies sender
    */
-  respondToTransfer(transferId, decision, responderId) {
+  respondToTransfer(transferId, decision, responderId, acceptedFileNames = null) {
     const transfer = this.activeTransfers.get(transferId);
     if (!transfer) return { error: 'Transfer not found' };
 
@@ -116,9 +117,15 @@ export class TransferEngine {
       transfer.startTime = Date.now();
       transfer.lastSpeedTime = Date.now();
 
+      if (Array.isArray(acceptedFileNames) && acceptedFileNames.length > 0) {
+        transfer.files = transfer.files.filter((f) => acceptedFileNames.includes(f.name));
+        transfer.totalBytes = transfer.files.reduce((acc, f) => acc + (f.size || 0), 0);
+        transfer.acceptedFileNames = acceptedFileNames;
+      }
+
       // Notify sender and recipient that transfer was accepted
       this.notifyUI('TRANSFER_ACCEPTED', transfer, [transfer.sender.id, transfer.recipient.id]);
-      return { success: true, status: 'accepted', transferId };
+      return { success: true, status: 'accepted', transferId, acceptedFileNames: transfer.acceptedFileNames || null };
     } else {
       transfer.status = 'declined';
 
@@ -195,6 +202,7 @@ export class TransferEngine {
     transfer.status = 'completed';
     transfer.endTime = Date.now();
     transfer.bytesTransferred = transfer.totalBytes;
+    transfer.savedPath = transfer.files[0]?.savedPath || null;
 
     const historyItem = {
       id: transfer.id,
@@ -211,8 +219,12 @@ export class TransferEngine {
     this.history.unshift(historyItem);
     this.saveHistory();
 
-    // Notify both parties
-    this.notifyUI('TRANSFER_COMPLETED', { ...transfer, historyItem }, [transfer.sender.id, transfer.recipient.id]);
+    // Notify both parties (strictly sender and recipient)
+    const targetIds = [transfer.sender.id, transfer.recipient.id];
+    if (transfer.recipient.id === this.config.id || transfer.recipient.id === 'host') {
+      targetIds.push(this.config.id, 'host');
+    }
+    this.notifyUI('TRANSFER_COMPLETED', { ...transfer, historyItem, savedPath: transfer.savedPath }, targetIds);
 
     setTimeout(() => {
       this.activeTransfers.delete(transferId);
@@ -223,11 +235,39 @@ export class TransferEngine {
     const transfer = this.activeTransfers.get(transferId);
     if (!transfer) return;
 
+    // Never cancel or delete an already completed transfer
+    if (transfer.status === 'completed') return;
+
     transfer.status = 'cancelled';
     transfer.cancelReason = reason;
 
-    this.notifyUI('TRANSFER_CANCELLED', { id: transferId, reason }, [transfer.sender.id, transfer.recipient.id]);
+    this.notifyUI('TRANSFER_CANCELLED', { id: transferId, reason }, null);
     this.activeTransfers.delete(transferId);
+  }
+
+  removeFileFromTransfer(transferId, fileName) {
+    const transfer = this.activeTransfers.get(transferId);
+    if (!transfer) return { error: 'Transfer not found' };
+
+    // Filter out the requested file
+    transfer.files = (transfer.files || []).filter((f) => f.name !== fileName);
+    transfer.totalBytes = transfer.files.reduce((acc, f) => acc + (f.size || 0), 0);
+
+    if (transfer.files.length === 0) {
+      this.cancelTransfer(transferId, 'تم إلغاء جميع الملفات من قبل المرسل');
+      return { success: true, cancelled: true };
+    }
+
+    // Notify sender and recipient about updated files across all their possible connection IDs
+    const targetIds = [
+      transfer.sender?.id, 
+      transfer.recipient?.id, 
+      this.config.id, 
+      'host'
+    ].filter(Boolean);
+
+    this.notifyUI('TRANSFER_UPDATED', transfer, targetIds);
+    return { success: true, files: transfer.files, totalBytes: transfer.totalBytes };
   }
 
   getTransfer(transferId) {
