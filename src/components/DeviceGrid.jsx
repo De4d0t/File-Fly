@@ -1,9 +1,11 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Power,
   Eye,
   EyeOff,
   Edit2,
+  WifiOff,
+  RotateCw,
 } from 'lucide-react';
 import { useFileFly } from '../context/FileFlyContext.jsx';
 import DeviceCard from './DeviceCard.jsx';
@@ -343,33 +345,34 @@ export default function DeviceGrid() {
     isRadarActive,
     toggleRadar,
     isHostMachine,
+    isOnline,
+    reconnectSocket,
     toggleVisibility,
     setIsRenameModalOpen,
   } = useFileFly()
 
   const isVisible = myDevice?.visible !== false
+  const isHostWifiOff = isHostMachine && (!myDevice?.ip || myDevice?.ip === '127.0.0.1');
+  const isDisconnected = (!isHostMachine && !isOnline) || isHostWifiOff;
 
-  const filteredPeers = useMemo(
-    () =>
-      (peers || []).filter((peer) => {
-        if (!peer?.id) return false
-        if (myDevice?.id && peer.id === myDevice.id) return false
-        const saved =
-          typeof window !== 'undefined'
-            ? localStorage.getItem('filefly_device_id')
-            : null
-        if (saved && peer.id === saved) return false
-        if (myDevice?.isHost && peer.isHost) return false
-        if (
-          myDevice?.name &&
-          peer.name === myDevice.name &&
-          peer.ip === myDevice.ip
-        )
-          return false
-        return true
-      }),
-    [peers, myDevice],
-  )
+  // Debounce the disconnected UI state so fast page refreshes (F5) don't flash OFFLINE
+  const [showDisconnected, setShowDisconnected] = useState(false);
+
+  useEffect(() => {
+    let timer = null;
+    if (isDisconnected) {
+      timer = setTimeout(() => {
+        setShowDisconnected(true);
+      }, 1000);
+    } else {
+      setShowDisconnected(false);
+    }
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [isDisconnected]);
+
+  const filteredPeers = isDisconnected ? [] : (peers || []);
 
   const hasPeers = filteredPeers.length > 0
 
@@ -458,10 +461,23 @@ export default function DeviceGrid() {
           </button>
         </div>
 
-        {/* ── Status bar (Sleek English ONLINE badge) ── */}
+        {/* ── Status bar (Sleek English ONLINE badge or Concise Disconnected Notice) ── */}
         <div className="dg-status-bar">
           {!isRadarActive ? (
             <span className="dg-status-text">الرادار متوقف</span>
+          ) : showDisconnected ? (
+            <button
+              type="button"
+              onClick={reconnectSocket}
+              className="dg-freq-tag flex items-center gap-1.5 border-rose-500/40 text-rose-400 bg-rose-500/10 shadow-sm hover:bg-rose-500/15 active:scale-95 transition-all animate-in fade-in select-none"
+              title={isHostWifiOff ? 'Wi-Fi disconnected on this device - Click to retry' : 'Disconnected from server - Click to reconnect'}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse shadow-sm shadow-rose-500 shrink-0" />
+              <span className="font-semibold text-[11px] sm:text-xs tracking-tight">
+                {isHostWifiOff ? 'NO WI-FI' : 'OFFLINE'}
+              </span>
+              <RotateCw className="w-3 h-3 text-rose-400/80 animate-spin shrink-0" />
+            </button>
           ) : (
             <span
               className={`dg-freq-tag flex items-center gap-1.5 ${hasPeers ? 'border-emerald-500/40 text-emerald-400 bg-emerald-500/10' : 'text-sky-400/80 border-sky-500/20 bg-sky-500/5'}`}
@@ -475,8 +491,8 @@ export default function DeviceGrid() {
         </div>
       </div>
 
-      {/* ── Subtle Quick Connect Hint (Only on host PC when radar active and no peers yet) ── */}
-      {!hasPeers && isRadarActive && isHostMachine && (
+      {/* ── Subtle Quick Connect Hint (Only on host PC when radar active, connected, and no peers yet) ── */}
+      {!hasPeers && isRadarActive && isHostMachine && !showDisconnected && (
         <div className="flex items-center justify-center animate-in fade-in duration-300">
           <div
             className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/40 border border-slate-800/60 text-slate-400 text-xs shadow-sm"

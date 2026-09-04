@@ -19,6 +19,7 @@ export class PeerDiscovery {
     this.broadcastTimer = null;
     this.cleanupTimer = null;
     this.subnetScanTimer = null;
+    this.isHostUIActive = false; // Only true when host machine browser/app UI is actively open
 
     // Subnet Scanner for reliable LAN auto-discovery
     this.scanner = new SubnetScanner(
@@ -102,6 +103,14 @@ export class PeerDiscovery {
         this.socket.close();
       } catch (e) {}
       this.socket = null;
+    }
+  }
+
+  setHostUIActive(active) {
+    const next = Boolean(active);
+    if (this.isHostUIActive !== next) {
+      this.isHostUIActive = next;
+      this.notifyPeersChanged();
     }
   }
 
@@ -197,15 +206,23 @@ export class PeerDiscovery {
   startCleanupTimer() {
     this.cleanupTimer = setInterval(() => {
       const now = Date.now();
+      const hostIP = getPrimaryLocalIP();
       let changed = false;
 
-      for (const [id, peer] of this.peers.entries()) {
-        // Connected WebSocket web clients are only removed on disconnect (ws.close)
-        if (peer.isWebClient) {
-          continue;
+      // If computer has no active Wi-Fi/LAN (only 127.0.0.1), immediately clear all remote peers!
+      if (hostIP === '127.0.0.1') {
+        if (this.peers.size > 0) {
+          this.peers.clear();
+          this.notifyPeersChanged();
+          return;
         }
+      }
 
-        if (now - peer.lastSeen > PEER_TIMEOUT_MS) {
+      for (const [id, peer] of this.peers.entries()) {
+        // Web clients are managed directly via WebSocket lifecycle (ws.on('close')), not UDP discovery timeout
+        if (peer.isWebClient) continue;
+
+        if (now - (peer.lastSeen || 0) > PEER_TIMEOUT_MS) {
           this.peers.delete(id);
           changed = true;
         }
@@ -214,7 +231,7 @@ export class PeerDiscovery {
       if (changed) {
         this.notifyPeersChanged();
       }
-    }, 4000);
+    }, 2000);
   }
 
   addOrUpdatePeer(peer) {
@@ -267,31 +284,33 @@ export class PeerDiscovery {
     const map = new Map();
     const hostIP = getPrimaryLocalIP();
 
-    // 1. Deduplicate remote peers by IP (taking the most recently seen)
-    const ipMap = new Map();
-    for (const p of this.peers.values()) {
-      if (p.visible !== false && p.id !== this.config.id && p.ip !== hostIP && p.ip !== '127.0.0.1') {
-        const existing = ipMap.get(p.ip);
-        if (!existing || (p.lastSeen || 0) >= (existing.lastSeen || 0)) {
-          ipMap.set(p.ip, p);
+    // If host machine has active Wi-Fi/LAN, include remote peers
+    if (hostIP !== '127.0.0.1') {
+      const ipMap = new Map();
+      for (const p of this.peers.values()) {
+        if (p.visible !== false && p.id !== this.config.id && p.ip !== hostIP && p.ip !== '127.0.0.1') {
+          const existing = ipMap.get(p.ip);
+          if (!existing || (p.lastSeen || 0) >= (existing.lastSeen || 0)) {
+            ipMap.set(p.ip, p);
+          }
         }
+      }
+
+      for (const p of ipMap.values()) {
+        map.set(p.id, {
+          id: p.id,
+          name: p.name,
+          ip: p.ip,
+          port: p.port,
+          os: p.os,
+          visible: true,
+          lastSeen: p.lastSeen,
+        });
       }
     }
 
-    for (const p of ipMap.values()) {
-      map.set(p.id, {
-        id: p.id,
-        name: p.name,
-        ip: p.ip,
-        port: p.port,
-        os: p.os,
-        visible: true,
-        lastSeen: p.lastSeen,
-      });
-    }
-
-    // 2. Add the host machine exactly once if visible
-    if (this.config.visible) {
+    // 2. Add the host machine only if visible AND its UI is actively open on the laptop
+    if (this.config.visible && this.isHostUIActive) {
       map.set(this.config.id, {
         id: this.config.id,
         name: this.config.name,

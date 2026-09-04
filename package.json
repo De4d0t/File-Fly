@@ -5,7 +5,7 @@
   "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
-    "dev:server": "node server/index.js",
+    "dev:server": "node --watch server/index.js",
     "dev:vite": "vite",
     "dev": "concurrently -k \"npm run dev:server\" \"npm run dev:vite\"",
     "build": "vite build",

@@ -1,3 +1,5 @@
+import { getServerBaseUrl } from './serverDiscovery.js';
+
 /**
  * High-speed file sender service with chunk/stream upload & progress tracking
  */
@@ -10,7 +12,7 @@ export async function requestTransferToPeer(peer, files, myDevice, batch = null)
     relativePath: file.webkitRelativePath || file.name,
   }));
 
-  const localBaseUrl = typeof window !== 'undefined' ? window.location.origin : 'http://127.0.0.1:53316';
+  const localBaseUrl = getServerBaseUrl();
   
   // If recipient is a web client (e.g. phone/browser) or shares the host, route through local server
   let targetBaseUrl = localBaseUrl;
@@ -156,7 +158,7 @@ export function uploadFilesToPeer(targetBaseUrl, transferId, files, onProgress, 
 export async function cancelTransferOnPeer(targetBaseUrl, transferId, reason = 'User cancelled') {
   if (!transferId) return;
   try {
-    const localBaseUrl = typeof window !== 'undefined' ? window.location.origin : 'http://127.0.0.1:53316';
+    const localBaseUrl = getServerBaseUrl();
     const url = targetBaseUrl || localBaseUrl;
     await fetch(`${url}/api/transfer/cancel`, {
       method: 'POST',

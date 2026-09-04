@@ -11,14 +11,33 @@ import {
   showSystemNotification 
 } from '../utils/soundEffects.js';
 import { formatBytes, generateUUID } from '../utils/formatters.js';
+import { getServerBaseUrl, setServerBaseUrl } from '../services/serverDiscovery.js';
 
 const FileFlyContext = createContext(null);
 
 export function FileFlyProvider({ children }) {
+  const [activeServerUrl, setActiveServerUrl] = useState(() => getServerBaseUrl());
+
+  const apiFetch = useCallback((url, options = {}) => {
+    const base = getServerBaseUrl();
+    const fullUrl = url.startsWith('http') ? url : `${base}${url.startsWith('/') ? '' : '/'}${url}`;
+    return fetch(fullUrl, options);
+  }, []);
+
+  const updateActiveServer = useCallback((newServerUrl) => {
+    const normalized = setServerBaseUrl(newServerUrl);
+    if (normalized) {
+      setActiveServerUrl(normalized);
+      socketService.reconnectTo(normalized);
+    }
+    return normalized;
+  }, []);
+
   const isHostMachine = typeof window !== 'undefined' && (
     Boolean(window.fileflyDesktop) ||
     window.location.hostname === 'localhost' ||
-    window.location.hostname === '127.0.0.1'
+    window.location.hostname === '127.0.0.1' ||
+    localStorage.getItem('filefly_is_host') === 'true'
   );
 
   const getClientOS = () => {
@@ -116,13 +135,16 @@ export function FileFlyProvider({ children }) {
 
   const initialIdentity = getInitialClientIdentity();
 
+  const savedHostId = typeof window !== 'undefined' ? localStorage.getItem('filefly_host_id') : null;
+  const savedHostIp = typeof window !== 'undefined' ? localStorage.getItem('filefly_host_ip') : null;
+
   // Device identity
   const [myDevice, setMyDevice] = useState({
-    id: initialIdentity.id,
+    id: isHostMachine && savedHostId ? savedHostId : initialIdentity.id,
     name: initialIdentity.name,
     visible: initialIdentity.visible,
     os: getClientOS(),
-    ip: typeof window !== 'undefined' ? window.location.hostname : '127.0.0.1',
+    ip: isHostMachine ? (savedHostIp || (typeof window !== 'undefined' ? window.location.hostname : '127.0.0.1')) : null,
     port: 53316,
     isHost: isHostMachine,
   });
@@ -216,18 +238,80 @@ export function FileFlyProvider({ children }) {
   useEffect(() => {
     socketService.connect();
 
+    let disconnectPeersTimer = null;
     const unsubConnection = socketService.on('connection_change', (connected) => {
       setIsOnline(connected);
-      if (connected && !isHostMachine) {
-        const clientIdentity = getInitialClientIdentity();
-        socketService.send('REGISTER_PEER', {
-          id: clientIdentity.id,
-          name: clientIdentity.name,
-          visible: clientIdentity.visible,
-          os: getClientOS(),
-        });
+      if (connected) {
+        if (disconnectPeersTimer) {
+          clearTimeout(disconnectPeersTimer);
+          disconnectPeersTimer = null;
+        }
+        if (!isHostMachine) {
+          const clientIdentity = getInitialClientIdentity();
+          socketService.send('REGISTER_PEER', {
+            id: clientIdentity.id,
+            name: clientIdentity.name,
+            visible: clientIdentity.visible,
+            os: getClientOS(),
+          });
+        }
+      } else {
+        if (disconnectPeersTimer) {
+          clearTimeout(disconnectPeersTimer);
+          disconnectPeersTimer = null;
+        }
+        // If Wi-Fi is turned off or offline, clear peers immediately!
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          setPeers([]);
+        } else {
+          // If socket connection dropped, clear peers after 1.5s grace period
+          disconnectPeersTimer = setTimeout(() => {
+            setPeers([]);
+          }, 1500);
+        }
       }
     });
+
+    const handleWindowOffline = () => {
+      setIsOnline(false);
+      setPeers([]);
+    };
+    window.addEventListener('offline', handleWindowOffline);
+
+    const handlePageExit = () => {
+      try {
+        const id = myDeviceRef.current?.id;
+        if (id) {
+          socketService.send('UNREGISTER_PEER', { id });
+        }
+        socketService.disconnect();
+      } catch (_) {}
+    };
+
+    const handlePageHide = (e) => {
+      // When the page/window is destroyed or closed (not retained in bfcache)
+      if (!e.persisted) {
+        handlePageExit();
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      try {
+        const id = myDeviceRef.current?.id;
+        const isTransferring = activeTransferRef.current?.status === 'transferring';
+        if (isTransferring) return;
+
+        if (document.visibilityState === 'hidden') {
+          socketService.send('CLIENT_VISIBILITY', { id, inBackground: true });
+        } else if (document.visibilityState === 'visible') {
+          socketService.send('CLIENT_VISIBILITY', { id, inBackground: false });
+        }
+      } catch (_) {}
+    };
+
+    window.addEventListener('beforeunload', handlePageExit);
+    window.addEventListener('pagehide', handlePageHide);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     const unsubInit = (data) => {
       const host = data.hostDevice || data.device;
@@ -245,11 +329,15 @@ export function FileFlyProvider({ children }) {
       if (isHost && host) {
         const cleanHost = { ...host, name: shortenDeviceName(host.name) };
         setMyDevice(cleanHost);
-        if (typeof window !== 'undefined' && cleanHost.name) {
-          localStorage.setItem('filefly_device_name', cleanHost.name);
+        myDeviceRef.current = cleanHost;
+        if (typeof window !== 'undefined') {
+          if (cleanHost.name) localStorage.setItem('filefly_device_name', cleanHost.name);
+          if (cleanHost.id) localStorage.setItem('filefly_host_id', cleanHost.id);
+          if (cleanHost.ip) localStorage.setItem('filefly_host_ip', cleanHost.ip);
+          localStorage.setItem('filefly_is_host', 'true');
         }
         if (data.peers) {
-          setPeers(processPeersList(data.peers));
+          setPeers(processPeersList(data.peers, cleanHost));
         }
       } else {
         // Remote client (Laptop 2 or Phone)
@@ -266,6 +354,7 @@ export function FileFlyProvider({ children }) {
         };
 
         setMyDevice(clientDevice);
+        myDeviceRef.current = clientDevice;
 
         // Announce our presence to the host
         socketService.send('REGISTER_PEER', {
@@ -277,26 +366,37 @@ export function FileFlyProvider({ children }) {
 
         // Set peers: filter out self and deduplicate
         if (data.peers) {
-          setPeers(processPeersList(data.peers));
+          setPeers(processPeersList(data.peers, clientDevice));
         }
       }
 
       if (data.history) setHistory(data.history);
     };
 
-    const processPeersList = (rawPeers) => {
-      const currentMyDevice = myDeviceRef.current;
+    const processPeersList = (rawPeers, overrideDevice = null) => {
+      const currentMyDevice = overrideDevice || myDeviceRef.current;
       const savedClientId = typeof window !== 'undefined' ? localStorage.getItem('filefly_device_id') : null;
+      const savedHostId = typeof window !== 'undefined' ? localStorage.getItem('filefly_host_id') : null;
       const host = hostDeviceRef.current;
+      const hostId = host?.id || savedHostId;
+      const isCurrentHost = Boolean(isHostMachine || currentMyDevice?.isHost);
 
       const filtered = (rawPeers || []).filter((p) => {
         if (!p || !p.id) return false;
         if (currentMyDevice?.id && p.id === currentMyDevice.id) return false;
         if (savedClientId && p.id === savedClientId) return false;
+
+        // On the host machine, NEVER include the host peer or localhost in peers list
+        if (isCurrentHost) {
+          if (p.isHost || (hostId && p.id === hostId) || p.ip === '127.0.0.1' || p.ip === 'localhost') return false;
+        }
+
+        // On remote client, filter out self by IP
+        if (!currentMyDevice?.isHost && p.isHost) return true;
         if (!currentMyDevice?.isHost && currentMyDevice?.ip && p.ip === currentMyDevice.ip) return false;
-        if (currentMyDevice?.isHost && (p.isHost || (host && p.id === host.id))) return false;
         return true;
       });
+
 
       // Strict IP deduplication: One IP address belongs to one physical device
       const ipMap = new Map();
@@ -327,6 +427,19 @@ export function FileFlyProvider({ children }) {
     const unsubDevice = socketService.on('DEVICE_UPDATE', (updated) => {
       if (isHostMachine) {
         setMyDevice((prev) => ({ ...prev, ...updated }));
+      }
+    });
+
+    const unsubHostUpdate = socketService.on('HOST_UPDATE', (updatedHost) => {
+      if (updatedHost) {
+        hostDeviceRef.current = updatedHost;
+        if (isHostMachine) {
+          setMyDevice((prev) => ({
+            ...prev,
+            ...updatedHost,
+            name: shortenDeviceName(updatedHost.name || prev.name),
+          }));
+        }
       }
     });
 
@@ -364,7 +477,7 @@ export function FileFlyProvider({ children }) {
           responderId: currentId,
         });
 
-        fetch('/api/transfer/respond', {
+        apiFetch('/api/transfer/respond', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ transferId: transfer.id, decision: 'accept', responderId: currentId }),
@@ -616,11 +729,16 @@ export function FileFlyProvider({ children }) {
     });
 
     return () => {
+      window.removeEventListener('offline', handleWindowOffline);
+      window.removeEventListener('beforeunload', handlePageExit);
+      window.removeEventListener('pagehide', handlePageHide);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       unsubConnection();
       unsubInitEvent();
       unsubPeers();
       unsubScanStatus();
       unsubDevice();
+      unsubHostUpdate();
       unsubRequest();
       unsubUpdated();
       unsubProgress();
@@ -639,7 +757,7 @@ export function FileFlyProvider({ children }) {
     const transferId = activeTransfer.id;
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(`/api/transfer/status/${encodeURIComponent(transferId)}`);
+        const res = await apiFetch(`/api/transfer/status/${encodeURIComponent(transferId)}`);
         if (res.ok) {
           const data = await res.json();
           if (data.status === 'completed') {
@@ -673,7 +791,7 @@ export function FileFlyProvider({ children }) {
 
     if (isHostMachine) {
       try {
-        await fetch('/api/visibility', {
+        await apiFetch('/api/visibility', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ visible: nextState }),
@@ -693,7 +811,7 @@ export function FileFlyProvider({ children }) {
 
     if (isHostMachine) {
       try {
-        await fetch('/api/device-name', {
+        await apiFetch('/api/device-name', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name }),
@@ -762,7 +880,7 @@ export function FileFlyProvider({ children }) {
       });
 
       try {
-        await fetch('/api/transfer/respond', {
+        await apiFetch('/api/transfer/respond', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ transferId, decision: 'accept', responderId: myDevice.id, acceptedFileNames }),
@@ -793,7 +911,7 @@ export function FileFlyProvider({ children }) {
       }, 3500);
 
       try {
-        await fetch('/api/transfer/respond', {
+        await apiFetch('/api/transfer/respond', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ transferId, decision: 'decline', responderId: myDevice.id }),
@@ -1264,7 +1382,7 @@ export function FileFlyProvider({ children }) {
         }
       }
       try {
-        await fetch('/api/open-downloads', {
+        await apiFetch('/api/open-downloads', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ filePath }),
@@ -1278,7 +1396,7 @@ export function FileFlyProvider({ children }) {
       const fileName = itemOrPath?.firstFileName || activeTransfer?.firstFileName || 'downloaded_file';
       if (transferId) {
         const link = document.createElement('a');
-        link.href = `/api/transfer/download/${transferId}/0`;
+        link.href = `${getServerBaseUrl()}/api/transfer/download/${transferId}/0`;
         link.download = fileName;
         document.body.appendChild(link);
         link.click();
@@ -1303,24 +1421,24 @@ export function FileFlyProvider({ children }) {
         }
       }
       try {
-        const res = await fetch('/api/open-file', {
+        const res = await apiFetch('/api/open-file', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ transferId, fileName, filePath: savedPath }),
         });
         if (!res.ok && transferId) {
-          window.open(`/api/transfer/view/${transferId}/0`, '_blank');
+          window.open(`${getServerBaseUrl()}/api/transfer/view/${transferId}/0`, '_blank');
         }
       } catch (e) {
         console.error('Failed to open file:', e);
         if (transferId) {
-          window.open(`/api/transfer/view/${transferId}/0`, '_blank');
+          window.open(`${getServerBaseUrl()}/api/transfer/view/${transferId}/0`, '_blank');
         }
       }
     } else {
       // On web/mobile client: open/stream the file directly in browser media viewer
       if (transferId) {
-        window.open(`/api/transfer/view/${transferId}/0`, '_blank');
+        window.open(`${getServerBaseUrl()}/api/transfer/view/${transferId}/0`, '_blank');
       }
     }
   };
@@ -1360,6 +1478,9 @@ export function FileFlyProvider({ children }) {
         cancelActiveTransfer,
         removeSenderFile,
         dismissActiveTransfer,
+        activeServerUrl,
+        updateActiveServer,
+        apiFetch,
         reconnectSocket: () => socketService.reconnectNow(),
       }}
     >

@@ -28,7 +28,35 @@ const mdnsResponder = new MdnsResponder(['fly.local', 'f.local', 'filefly.local'
 
 // Connected clients registry: ws -> { id, name, visible, os, ip, isLocalHost }
 const socketClientMap = new Map();
-const pendingDisconnectTimers = new Map();
+
+let hostUIDisconnectTimer = null;
+
+/**
+ * Tracks whether the laptop's browser page or app is actively open and updates peers
+ */
+function updateHostUIStatus() {
+  const hasLocal = Array.from(socketClientMap.values()).some((c) => c.isLocalHost);
+  if (hasLocal) {
+    if (hostUIDisconnectTimer) {
+      clearTimeout(hostUIDisconnectTimer);
+      hostUIDisconnectTimer = null;
+    }
+    discovery.setHostUIActive(true);
+    dispatchEvent('PEERS_UPDATE', discovery.getPeersList(), null);
+  } else {
+    // 1.5s grace period so a page refresh (F5) doesn't cause peer flicker on other devices
+    if (!hostUIDisconnectTimer) {
+      hostUIDisconnectTimer = setTimeout(() => {
+        hostUIDisconnectTimer = null;
+        const stillHasLocal = Array.from(socketClientMap.values()).some((c) => c.isLocalHost);
+        if (!stillHasLocal) {
+          discovery.setHostUIActive(false);
+          dispatchEvent('PEERS_UPDATE', discovery.getPeersList(), null);
+        }
+      }, 1500);
+    }
+  }
+}
 
 /**
  * Sends event to specific targeted client IDs, or broadcasts to all if targetIds is null
@@ -107,7 +135,12 @@ wss.on('connection', (ws, req) => {
     os: getDeviceOS(),
     ip: rawClientIP,
     isLocalHost,
+    lastSeen: Date.now(),
   });
+
+  if (isLocalHost) {
+    updateHostUIStatus();
+  }
 
   // Send initial state to newly connected client
   ws.send(
@@ -131,9 +164,76 @@ wss.on('connection', (ws, req) => {
     })
   );
 
+  ws.on('pong', () => {
+    const clientMeta = socketClientMap.get(ws);
+    if (clientMeta) {
+      clientMeta.lastSeen = Date.now();
+      if (clientMeta.id && discovery.peers.has(clientMeta.id)) {
+        discovery.peers.get(clientMeta.id).lastSeen = Date.now();
+      }
+    }
+  });
+
   ws.on('message', (messageBuffer) => {
     try {
       const { type, payload } = JSON.parse(messageBuffer.toString('utf8'));
+      const clientMeta = socketClientMap.get(ws);
+      if (clientMeta) {
+        clientMeta.lastSeen = Date.now();
+        if (clientMeta.id && discovery.peers.has(clientMeta.id)) {
+          discovery.peers.get(clientMeta.id).lastSeen = Date.now();
+        }
+      }
+
+      if (type === 'PING') {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'PONG' }));
+        }
+        return;
+      }
+
+      if (type === 'UNREGISTER_PEER') {
+        const clientMeta = socketClientMap.get(ws);
+        const clientId = payload.id || clientMeta?.id;
+        if (clientId) {
+          const hasOtherSockets = Array.from(socketClientMap.values()).some(
+            (c) => c !== clientMeta && ((c.id && c.id === clientId) || (c.ip && c.ip === rawClientIP))
+          );
+          if (!hasOtherSockets) {
+            discovery.removePeer(clientId, rawClientIP);
+            dispatchEvent('PEERS_UPDATE', discovery.getPeersList(), null);
+          }
+        }
+        return;
+      }
+
+      if (type === 'CLIENT_VISIBILITY') {
+        const clientMeta = socketClientMap.get(ws);
+        const clientId = payload.id || clientMeta?.id;
+        const inBackground = Boolean(payload.inBackground);
+
+        if (clientMeta) {
+          clientMeta.inBackground = inBackground;
+          clientMeta.lastSeen = Date.now();
+        }
+
+        // Keep peer active even when running in background!
+        // Peer will only be removed when the user actually closes/deletes the tab/window (ws close or UNREGISTER_PEER).
+        if (clientId && clientId !== config.id && !clientMeta?.isLocalHost) {
+          discovery.addOrUpdatePeer({
+            id: clientId,
+            name: clientMeta?.name || 'Device',
+            ip: rawClientIP,
+            port: PORT,
+            os: clientMeta?.os || 'windows',
+            visible: true,
+            isWebClient: true,
+            lastSeen: Date.now(),
+          });
+          dispatchEvent('PEERS_UPDATE', discovery.getPeersList(), null);
+        }
+        return;
+      }
 
       if (type === 'REGISTER_PEER') {
         const clientMeta = socketClientMap.get(ws);
@@ -147,12 +247,6 @@ wss.on('connection', (ws, req) => {
           clientMeta.name = clientName;
           clientMeta.visible = isVisible;
           clientMeta.os = clientOS;
-        }
-
-        // Cancel any pending disconnect removal for this clientId and IP
-        if (clientId && pendingDisconnectTimers.has(clientId)) {
-          clearTimeout(pendingDisconnectTimers.get(clientId));
-          pendingDisconnectTimers.delete(clientId);
         }
 
         if (clientId && clientId !== config.id) {
@@ -290,17 +384,70 @@ wss.on('connection', (ws, req) => {
     socketClientMap.delete(ws);
 
     if (clientMeta?.id && clientMeta.id !== config.id) {
-      const hasOtherSockets = Array.from(socketClientMap.values()).some((c) => c.id === clientMeta.id);
+      const hasOtherSockets = Array.from(socketClientMap.values()).some(
+        (c) => (c.id && c.id === clientMeta.id) || (c.ip && c.ip === clientMeta.ip)
+      );
       if (!hasOtherSockets) {
-        const timer = setTimeout(() => {
-          pendingDisconnectTimers.delete(clientMeta.id);
-          discovery.removePeer(clientMeta.id, clientMeta.ip);
-        }, 4000);
-        pendingDisconnectTimers.set(clientMeta.id, timer);
+        discovery.removePeer(clientMeta.id, clientMeta.ip);
+        dispatchEvent('PEERS_UPDATE', discovery.getPeersList(), null);
       }
+    }
+
+    if (clientMeta?.isLocalHost) {
+      updateHostUIStatus();
     }
   });
 });
+
+let lastKnownHostIP = getPrimaryLocalIP();
+
+// Periodic remote socket liveness monitor & network adapter watcher
+setInterval(() => {
+  const now = Date.now();
+  const hostIP = getPrimaryLocalIP();
+  let changed = false;
+
+  // Check if laptop's Wi-Fi / IP changed (e.g. Wi-Fi turned back on)
+  if (hostIP !== lastKnownHostIP) {
+    console.log(`[FileFly Network] Host IP changed: ${lastKnownHostIP} -> ${hostIP}`);
+    lastKnownHostIP = hostIP;
+
+    const hostInfo = {
+      id: config.id,
+      name: config.name,
+      visible: config.visible,
+      os: getDeviceOS(),
+      ip: hostIP,
+      port: PORT,
+      isHost: true,
+    };
+    dispatchEvent('HOST_UPDATE', hostInfo, null);
+    changed = true;
+  }
+
+  for (const [socket, meta] of socketClientMap.entries()) {
+    if (!meta.isLocalHost) {
+      if (hostIP === '127.0.0.1' || (meta.lastSeen && now - meta.lastSeen > 60000)) {
+        try {
+          socket.terminate();
+        } catch (_) {}
+        socketClientMap.delete(socket);
+        if (meta.id) {
+          discovery.removePeer(meta.id, meta.ip);
+          changed = true;
+        }
+      } else if (socket.readyState === WebSocket.OPEN) {
+        try {
+          socket.ping();
+        } catch (_) {}
+      }
+    }
+  }
+
+  if (changed) {
+    dispatchEvent('PEERS_UPDATE', discovery.getPeersList(), null);
+  }
+}, 1500);
 
 // Start Server
 server.listen(PORT, '0.0.0.0', () => {
