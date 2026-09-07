@@ -6,16 +6,10 @@ const { pathToFileURL } = require('url');
 
 process.on('uncaughtException', (err) => {
   console.error('[Electron Main Uncaught]', err);
-  try {
-    fs.appendFileSync(path.join(__dirname, 'renderer.log'), `[MAIN CRASH] ${err?.stack || err}\n`);
-  } catch (_) {}
 });
 
 process.on('unhandledRejection', (err) => {
   console.error('[Electron Main Rejection]', err);
-  try {
-    fs.appendFileSync(path.join(__dirname, 'renderer.log'), `[MAIN REJECTION] ${err?.stack || err}\n`);
-  } catch (_) {}
 });
 
 // Start background Express/WebSocket server automatically
@@ -24,9 +18,6 @@ try {
   if (fs.existsSync(serverScript)) {
     import(pathToFileURL(serverScript).href).catch((err) => {
       console.warn('[FileFly Backend] Server notice:', err?.message || err);
-      try {
-        fs.appendFileSync(path.join(__dirname, 'renderer.log'), `[BACKEND ERROR] ${err?.stack || err}\n`);
-      } catch (_) {}
     });
   }
 } catch (err) {
@@ -74,17 +65,8 @@ function createWindow() {
     mainWindow.setIcon(windowIcon);
   }
 
-  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
-    const logLine = `[Level ${level}] ${message} at ${sourceId}:${line}\n`;
-    try {
-      fs.appendFileSync(path.join(__dirname, 'renderer.log'), logLine);
-    } catch (_) {}
-  });
-
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
-    try {
-      fs.appendFileSync(path.join(__dirname, 'renderer.log'), `[LOAD FAILED] Code ${errorCode}: ${errorDescription} (${validatedURL})\n`);
-    } catch (_) {}
+    console.warn(`[LOAD FAILED] Code ${errorCode}: ${errorDescription} (${validatedURL})`);
   });
 
   // By default, load production server on port 53316. Only load Vite 5173 if explicitly in VITE_DEV mode
@@ -154,14 +136,7 @@ ipcMain.handle('shell:showInFolder', async (event, filePath) => {
     shell.showItemInFolder(filePath);
     return true;
   }
-  const downloads = app.getPath('downloads');
-  shell.openPath(downloads);
   return false;
-});
-
-ipcMain.handle('shell:openDownloads', async (event, dirPath) => {
-  const target = dirPath && fs.existsSync(dirPath) ? dirPath : app.getPath('downloads');
-  return await shell.openPath(target);
 });
 
 // Native File Drag & Drop to Windows Desktop / Explorer

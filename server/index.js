@@ -5,7 +5,7 @@ import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { getDeviceConfig, getPrimaryLocalIP, getDeviceOS } from './networkUtils.js';
+import { getDeviceConfig, getPrimaryLocalIP, getLocalIPAddresses, getDeviceOS } from './networkUtils.js';
 import { PeerDiscovery } from './discovery.js';
 import { TransferEngine } from './transferEngine.js';
 import { createRouter } from './routes.js';
@@ -112,7 +112,15 @@ if (fs.existsSync(publicPath)) {
 
 const distPath = path.join(__dirname, '..', 'dist');
 if (fs.existsSync(distPath)) {
-  app.use(express.static(distPath));
+  app.use(express.static(distPath, {
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('.html') || filePath.endsWith('sw.js')) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+      }
+    }
+  }));
   app.get('*', (req, res) => {
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.setHeader('Pragma', 'no-cache');
@@ -125,7 +133,8 @@ if (fs.existsSync(distPath)) {
 wss.on('connection', (ws, req) => {
   const rawClientIP = req.socket.remoteAddress?.replace(/^::ffff:/, '') || req.headers['x-forwarded-for'] || '127.0.0.1';
   const primaryHostIP = getPrimaryLocalIP();
-  const isLocalHost = rawClientIP === '127.0.0.1' || rawClientIP === '::1' || rawClientIP === primaryHostIP || rawClientIP === 'localhost';
+  const localIPs = getLocalIPAddresses().map((a) => a.address);
+  const isLocalHost = rawClientIP === '127.0.0.1' || rawClientIP === '::1' || rawClientIP === primaryHostIP || rawClientIP === 'localhost' || localIPs.includes(rawClientIP);
 
   // Initial client meta
   socketClientMap.set(ws, {
@@ -159,7 +168,7 @@ wss.on('connection', (ws, req) => {
           isHost: true,
         },
         peers: discovery.getPeersList(),
-        history: transferEngine.getHistory(),
+        history: isLocalHost ? transferEngine.getHistory() : [],
       },
     })
   );
@@ -272,6 +281,17 @@ wss.on('connection', (ws, req) => {
             discovery.removePeer(clientId, rawClientIP);
           }
           dispatchEvent('PEERS_UPDATE', discovery.getPeersList(), null);
+
+          // Send transfers relevant to this specific client so remote device history is never empty
+          if (!clientMeta?.isLocalHost) {
+            const clientHistory = transferEngine.getHistory().filter((h) =>
+              (h.senderId && h.senderId === clientId) ||
+              (h.recipientId && h.recipientId === clientId)
+            );
+            if (clientHistory.length > 0 && ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: 'CLIENT_HISTORY', payload: clientHistory }));
+            }
+          }
         }
       } else if (type === 'SET_VISIBILITY') {
         const clientMeta = socketClientMap.get(ws);
@@ -489,22 +509,6 @@ function startRedirectServer(mainPort) {
   });
 }
 
-// Forward any legacy shortcuts or PWAs targeting old dev port 5173 to PORT
-let legacyRedirectServer = null;
-try {
-  const legacyApp = express();
-  legacyApp.use((req, res) => {
-    res.redirect(302, `http://localhost:${PORT}${req.url}`);
-  });
-  legacyRedirectServer = http.createServer(legacyApp);
-  legacyRedirectServer.on('error', () => {
-    legacyRedirectServer = null;
-  });
-  legacyRedirectServer.listen(5173, '127.0.0.1', () => {
-    console.log('[FileFly] 🔄 Legacy 5173 forwarder active → localhost:' + PORT);
-  });
-} catch (_) {}
-
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
     console.error(`\n⚠️ المنفذ ${PORT} مستخدم بالفعل حالياً بواسطة نسخة أخرى من السيرفر.`);
@@ -528,7 +532,6 @@ process.on('SIGINT', () => {
   discovery.stop();
   mdnsResponder.stop();
   if (redirectServer) redirectServer.close();
-  if (legacyRedirectServer) legacyRedirectServer.close();
   server.close(() => {
     process.exit(0);
   });
@@ -538,7 +541,6 @@ process.on('SIGTERM', () => {
   discovery.stop();
   mdnsResponder.stop();
   if (redirectServer) redirectServer.close();
-  if (legacyRedirectServer) legacyRedirectServer.close();
   server.close(() => {
     process.exit(0);
   });

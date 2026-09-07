@@ -43,10 +43,12 @@ export function getDeviceConfig() {
   if (fs.existsSync(CONFIG_FILE)) {
     try {
       const data = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
-      let downloadsDir = data.downloadsDir;
-      // If legacy or missing or contained FileFly subfolder, point directly to main Downloads
-      if (!downloadsDir || downloadsDir.endsWith('FileFly') || !fs.existsSync(downloadsDir)) {
-        downloadsDir = defaultDownloads;
+      let downloadsDir = defaultDownloads;
+      if (data.downloadsDir && fs.existsSync(data.downloadsDir)) {
+        downloadsDir = data.downloadsDir;
+      }
+      if (!fs.existsSync(downloadsDir)) {
+        try { fs.mkdirSync(downloadsDir, { recursive: true }); } catch (_) {}
       }
 
       // Automatically sanitize legacy long names
@@ -88,17 +90,13 @@ export function saveDeviceConfig(config) {
   }
 }
 
-/**
- * Returns default downloads directory for the computer (Downloads folder)
- */
 export function getDefaultDownloadsDir() {
   const dir = path.join(os.homedir(), 'Downloads');
   if (!fs.existsSync(dir)) {
     try {
       fs.mkdirSync(dir, { recursive: true });
     } catch (e) {
-      console.error('Failed to create default downloads directory:', e);
-      return os.homedir();
+      console.error('Failed to ensure downloads directory:', e);
     }
   }
   return dir;

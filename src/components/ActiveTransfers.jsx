@@ -35,10 +35,10 @@ export default function ActiveTransfers() {
     cancelActiveTransfer, 
     removeSenderFile,
     dismissActiveTransfer, 
-    openDownloadsFolder, 
     openFile, 
     isHostMachine, 
-    isMobileClient 
+    isMobileClient,
+    myDevice
   } = useFileFly();
 
   const transferId = activeTransfer?.id;
@@ -47,6 +47,17 @@ export default function ActiveTransfers() {
   const isCompleted = activeTransfer?.status === 'completed';
   const isIOS = Boolean(typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent || ''));
   const isMobile = Boolean(isMobileClient || isIOS || (typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent || '')));
+
+  const isServerHost = Boolean(
+    isHostMachine || 
+    myDevice?.isHost || 
+    (typeof window !== 'undefined' && (
+      window.fileflyDesktop ||
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      localStorage.getItem('filefly_is_host') === 'true'
+    ))
+  );
 
   const autoDownloadedRef = useRef(false);
   const [senderCountdown, setSenderCountdown] = useState(60);
@@ -65,37 +76,28 @@ export default function ActiveTransfers() {
     autoDownloadedRef.current = false;
   }, [transferId]);
 
-  // Auto-trigger browser download on mobile/web when incoming transfer completes
+  // Auto-trigger browser download ONLY on remote clients (phones, tablets, other PCs)
+  // Server machine ALREADY has files written to disk by the backend; downloading again creates duplicates!
   useEffect(() => {
-    if (isCompleted && isIncoming && (!isHostMachine || isMobile) && transferId && !autoDownloadedRef.current) {
+    if (isCompleted && isIncoming && !isServerHost && transferId && !autoDownloadedRef.current) {
       autoDownloadedRef.current = true;
       try {
-        const targetFileName = activeTransfer?.files?.[0]?.name || firstFileName || 'file';
-        const downloadUrl = `/api/transfer/download/${transferId}/0`;
-
-        if (isIOS) {
-          // On iOS Safari: Trigger direct download prompt for this single file
+        const files = activeTransfer?.files || [];
+        if (files.length > 1) {
           const link = document.createElement('a');
-          link.href = downloadUrl;
-          link.setAttribute('download', targetFileName);
+          link.href = `/api/transfer/download-zip/${transferId}`;
+          link.setAttribute('download', `${firstFileName || 'files'}_all.zip`);
+          link.style.display = 'none';
           document.body.appendChild(link);
           link.click();
           setTimeout(() => {
             try { document.body.removeChild(link); } catch (_) {}
           }, 1000);
         } else {
-          // On Android / Web: Trigger via hidden iframe and anchor
-          const iframe = document.createElement('iframe');
-          iframe.style.display = 'none';
-          iframe.src = downloadUrl;
-          document.body.appendChild(iframe);
-          setTimeout(() => {
-            try { document.body.removeChild(iframe); } catch (_) {}
-          }, 6000);
-
+          const targetFileName = files[0]?.name || firstFileName || 'file';
           const link = document.createElement('a');
-          link.href = downloadUrl;
-          link.download = targetFileName;
+          link.href = `/api/transfer/download/${transferId}/0`;
+          link.setAttribute('download', targetFileName);
           link.style.display = 'none';
           document.body.appendChild(link);
           link.click();
@@ -107,7 +109,7 @@ export default function ActiveTransfers() {
         console.warn('[FileFly] Auto-download error:', err);
       }
     }
-  }, [isCompleted, isIncoming, isHostMachine, isMobile, isIOS, transferId, firstFileName, activeTransfer?.files]);
+  }, [isCompleted, isIncoming, isServerHost, transferId, firstFileName, activeTransfer?.files]);
 
   // On iOS: Dismiss completed incoming transfer locally after download has been initiated
   useEffect(() => {
@@ -256,7 +258,7 @@ export default function ActiveTransfers() {
               </div>
 
               <h3 className="text-xl font-bold text-white mb-1 tracking-tight">
-                اكتمل استلام الملفات بنجاح! 🎉
+                اكتمل استلام الملفات بنجاح!
               </h3>
 
               <p className="text-xs sm:text-sm text-slate-300 mb-3 max-w-xs leading-relaxed">
@@ -340,7 +342,7 @@ export default function ActiveTransfers() {
                       {!isMobile ? (
                         <div 
                           className="w-8 h-8 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 flex items-center justify-center group-hover:bg-emerald-500/25 group-hover:border-emerald-400/60 group-hover:scale-105 transition-all shrink-0 cursor-grab active:cursor-grabbing shadow-sm"
-                          title="اسحب لسطح المكتب"
+                          title="اسحب هذا الملف بالفأرة وأفلته في سطح المكتب مباشرة"
                         >
                           <Move className="w-4 h-4 text-emerald-400 group-hover:text-emerald-300 transition-colors" />
                         </div>
@@ -357,32 +359,21 @@ export default function ActiveTransfers() {
 
               {/* Drag Hint - Only on PC / Laptop with mouse */}
               {!isMobile && (
-                <div className="w-full text-[11px] text-emerald-300/90 flex items-center justify-center gap-1.5 mb-3 bg-emerald-950/20 py-1.5 px-3 rounded-xl border border-emerald-500/20">
+                <div className="w-full text-[11px] text-emerald-300/90 flex items-center justify-center gap-1.5 mb-2.5 bg-emerald-950/20 py-1.5 px-3 rounded-xl border border-emerald-500/20">
                   <Move className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                   <span>اسحب الملف بالفأرة إلى سطح المكتب مباشرة!</span>
                 </div>
               )}
 
               {/* Primary Call-to-Action */}
-              <div className="w-full pt-1">
-                {isMobile ? (
-                  <button
-                    type="button"
-                    onClick={dismissActiveTransfer}
-                    className="w-full py-3 px-4 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-xs sm:text-sm font-semibold transition-all flex items-center justify-center gap-2 active:scale-98"
-                  >
-                    <span>تم (إغلاق)</span>
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => openDownloadsFolder(activeTransfer)}
-                    className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:via-teal-500 hover:to-emerald-400 text-white text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center gap-2.5 shadow-lg shadow-emerald-600/25 hover:shadow-emerald-500/40 hover:-translate-y-0.5 active:translate-y-0 active:scale-98 cursor-pointer border border-emerald-400/30"
-                  >
-                    <FolderOpen className="w-4 h-4 text-amber-300 shrink-0" />
-                    <span>فتح مجلد التنزيلات</span>
-                  </button>
-                )}
+              <div className="w-full pt-2">
+                <button
+                  type="button"
+                  onClick={dismissActiveTransfer}
+                  className="w-full py-3 px-4 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-xs sm:text-sm font-semibold transition-all flex items-center justify-center gap-2 active:scale-98 cursor-pointer shadow-sm"
+                >
+                  <span>تم (إغلاق)</span>
+                </button>
               </div>
             </div>
           )}
@@ -556,7 +547,7 @@ export default function ActiveTransfers() {
                   : isError
                   ? 'تعذر إتمام الإرسال ❌'
                   : isCompleted
-                  ? 'تم إرسال الملفات بنجاح! 🎉'
+                  ? 'تم إرسال الملفات بنجاح!'
                   : isWaitingApproval
                   ? 'في انتظار موافقة المستلم...'
                   : `إرسال إلى ${activeTransfer.partnerName}`}

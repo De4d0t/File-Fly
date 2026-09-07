@@ -1,10 +1,10 @@
 import { 
   Zap, 
   QrCode, 
-  FolderOpen, 
   Minus, 
   X,
-  DownloadCloud
+  DownloadCloud,
+  History
 } from 'lucide-react';
 import { useFileFly } from '../context/FileFlyContext.jsx';
 
@@ -16,7 +16,7 @@ export default function Header() {
     deferredInstallPrompt,
     isAppInstalled,
     installPwaApp,
-    openDownloadsFolder 
+    setIsHistoryModalOpen
   } = useFileFly();
 
   const isDesktop = typeof window !== 'undefined' && Boolean(window.fileflyDesktop);
@@ -97,12 +97,21 @@ export default function Header() {
             </div>
 
             {/* Distinctive Stylized Stacked Brand Typography */}
-            <div className="flex flex-col justify-center select-none leading-none">
-              <span className="text-[14px] sm:text-[16px] font-black tracking-wider text-white uppercase font-sans leading-none">
-                FILE
-              </span>
-              <span className="text-[14px] sm:text-[16px] font-black tracking-wider uppercase text-transparent bg-clip-text bg-gradient-to-r from-sky-400 via-cyan-300 to-teal-300 drop-shadow-[0_0_12px_rgba(56,189,248,0.5)] leading-none mt-0.5 sm:mt-1">
+            <div 
+              className="flex flex-col justify-center select-none leading-none group cursor-default"
+              style={{ fontFamily: "'Space Grotesk', 'Plus Jakarta Sans', 'Inter', -apple-system, sans-serif" }}
+            >
+              <span 
+                className="text-[13.5px] sm:text-[15.5px] font-black uppercase text-transparent bg-clip-text bg-gradient-to-r from-sky-400 via-cyan-300 to-sky-200 drop-shadow-[0_0_12px_rgba(56,189,248,0.55)] leading-none transition-all duration-300 group-hover:drop-shadow-[0_0_16px_rgba(56,189,248,0.8)]"
+                style={{ letterSpacing: '0.22em', marginRight: '-0.22em' }}
+              >
                 FLY
+              </span>
+              <span 
+                className="text-[12.5px] sm:text-[14.5px] font-extrabold text-white/95 uppercase leading-none mt-1 drop-shadow-[0_1px_3px_rgba(0,0,0,0.7)] transition-colors duration-300 group-hover:text-white"
+                style={{ letterSpacing: '0.12em', marginRight: '-0.12em' }}
+              >
+                FILE
               </span>
             </div>
           </div>
@@ -130,13 +139,13 @@ export default function Header() {
               </button>
             )}
 
-            {/* Open Downloads Folder */}
+            {/* History Modal */}
             <button
-              onClick={openDownloadsFolder}
+              onClick={() => setIsHistoryModalOpen(true)}
               className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/80 transition-all flex items-center justify-center hover:scale-105 active:scale-95 shadow-sm"
-              title="فتح مجلد التنزيلات"
+              title="سجل النقل والملفات"
             >
-              <FolderOpen className="w-4 h-4 text-amber-400" />
+              <History className="w-4 h-4 text-purple-400" />
             </button>
           </div>
 

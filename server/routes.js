@@ -24,19 +24,22 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
   const upload = multer({
     storage: multer.diskStorage({
       destination: (req, file, cb) => {
-        const targetDir = config.downloadsDir;
+        const transferId = req.query?.transferId || req.headers['x-transfer-id'] || req.body?.transferId;
+        const targetDir = transferEngine.getTransferDir(transferId);
         if (!fs.existsSync(targetDir)) {
           fs.mkdirSync(targetDir, { recursive: true });
         }
         cb(null, targetDir);
       },
       filename: (req, file, cb) => {
+        const transferId = req.query?.transferId || req.headers['x-transfer-id'] || req.body?.transferId;
+        const targetDir = transferEngine.getTransferDir(transferId);
         let cleanName = file.originalname;
         try {
           cleanName = Buffer.from(file.originalname, 'latin1').toString('utf8');
         } catch (e) {}
         const safeName = transferEngine.getSafeFilePath(
-          config.downloadsDir,
+          targetDir,
           cleanName
         );
         cb(null, path.basename(safeName));
@@ -50,12 +53,16 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
    */
   router.get('/health', (req, res) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    const clientIp = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').replace(/^.*:/, '');
+    const localIPs = ['127.0.0.1', 'localhost', ...getLocalIPAddresses()];
+    const isHost = localIPs.includes(clientIp) || req.hostname === 'localhost' || req.hostname === '127.0.0.1';
     res.json({
       status: 'ok',
       id: config.id,
       name: config.name,
       primaryIP: getPrimaryLocalIP(),
       port: serverPort,
+      isHost,
       timestamp: Date.now(),
     });
   });
@@ -293,7 +300,8 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
       return res.status(404).json({ error: 'Transfer session not found' });
     }
 
-    const targetPath = transferEngine.getSafeFilePath(config.downloadsDir, originalFileName);
+    const targetDir = transferEngine.getTransferDir(transferId);
+    const targetPath = transferEngine.getSafeFilePath(targetDir, originalFileName);
     const writeStream = fs.createWriteStream(targetPath);
 
     req.on('data', (chunk) => {
@@ -341,28 +349,29 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
     const { transferId, fileIndex } = req.params;
     const transfer = transferEngine.getTransfer(transferId);
     
-    // Check in active transfers or history
+    // Only allow download from active transfer sessions
     let targetFile = transfer?.files?.[Number(fileIndex)];
     let filePath = targetFile?.savedPath;
     let fileName = targetFile?.name;
-
-    if (!filePath || !fs.existsSync(filePath)) {
-      const historyItem = transferEngine.getHistory().find((h) => h.id === transferId);
-      if (historyItem && historyItem.savedPath && fs.existsSync(historyItem.savedPath)) {
-        filePath = historyItem.savedPath;
-        fileName = historyItem.firstFileName;
-      }
-    }
 
     if (filePath && fs.existsSync(filePath)) {
       const safeName = fileName || path.basename(filePath);
       const encodedName = encodeURIComponent(safeName);
       res.setHeader('Content-Disposition', `attachment; filename="${safeName}"; filename*=UTF-8''${encodedName}`);
-      res.setHeader('Cache-Control', 'public, max-age=31536000');
-      return res.sendFile(path.resolve(filePath));
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+
+      res.sendFile(path.resolve(filePath), (err) => {
+        if (!err && transferEngine.isTransitTransfer(transferId)) {
+          // Temporary transit file: wipe from server after recipient downloads
+          setTimeout(() => {
+            transferEngine.cleanupTransitFiles(transferId);
+          }, 8000);
+        }
+      });
+      return;
     }
 
-    res.status(404).json({ error: 'File not found' });
+    res.status(404).json({ error: 'File not found or transfer session expired' });
   });
 
   /**
@@ -373,16 +382,9 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
     const transfer = transferEngine.getTransfer(transferId);
     let files = transfer?.files || [];
 
-    if (!files.length) {
-      const historyItem = transferEngine.getHistory().find((h) => h.id === transferId);
-      if (historyItem && historyItem.savedPath) {
-        files = [{ name: historyItem.firstFileName, savedPath: historyItem.savedPath }];
-      }
-    }
-
     const validFiles = files.filter((f) => f.savedPath && fs.existsSync(f.savedPath));
     if (!validFiles.length) {
-      return res.status(404).json({ error: 'No files found on disk for this transfer' });
+      return res.status(404).json({ error: 'No files found or transfer session expired' });
     }
 
     const zipFileName = `FileFly_${validFiles.length}_files.zip`;
@@ -393,6 +395,14 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
     archive.on('error', (err) => {
       console.error('Archive error:', err);
       if (!res.headersSent) res.status(500).send({ error: err.message });
+    });
+
+    res.on('finish', () => {
+      if (transferEngine.isTransitTransfer(transferId)) {
+        setTimeout(() => {
+          transferEngine.cleanupTransitFiles(transferId);
+        }, 8000);
+      }
     });
 
     archive.pipe(res);
@@ -408,10 +418,37 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
    * Transfer History
    */
   router.get('/history', (req, res) => {
+    const clientId = req.query?.clientId;
+    const clientIp = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').replace(/^.*:/, '');
+    const localIPs = ['127.0.0.1', 'localhost', ...getLocalIPAddresses().map((a) => a.address)];
+    const isHost = localIPs.includes(clientIp) || req.hostname === 'localhost' || req.hostname === '127.0.0.1';
+
+    let historyList = transferEngine.getHistory();
+    if (clientId) {
+      historyList = historyList.filter((h) => h.senderId === clientId || h.recipientId === clientId);
+    } else if (!isHost) {
+      historyList = [];
+    }
+
     res.json({
-      history: transferEngine.getHistory(),
-      downloadsDir: config.downloadsDir,
+      history: historyList,
+      downloadsDir: isHost ? config.downloadsDir : null,
     });
+  });
+
+  router.post('/history/clear', (req, res) => {
+    transferEngine.clearHistory();
+    transferEngine.notifyUI('HISTORY_CLEARED', {}, null);
+    res.json({ success: true });
+  });
+
+  router.post('/history/delete/:id', (req, res) => {
+    const { id } = req.params;
+    if (id) {
+      transferEngine.deleteHistoryItem(id);
+      transferEngine.notifyUI('HISTORY_ITEM_DELETED', { id }, null);
+    }
+    res.json({ success: true, id });
   });
 
   /**
@@ -440,49 +477,6 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
 
     // Redirect to home with PWA install indicator
     res.redirect('/?install=pwa');
-  });
-
-  /**
-   * Open Downloads Folder in OS File Explorer (or highlight file)
-   */
-  router.post('/open-downloads', (req, res) => {
-    const { filePath } = req.body || {};
-    const defaultDownloads = path.join(os.homedir(), 'Downloads');
-    const dir = config.downloadsDir || defaultDownloads;
-
-    try {
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-
-      const osType = getDeviceOS();
-      if (osType === 'windows') {
-        if (filePath && fs.existsSync(filePath)) {
-          // Open Explorer and highlight the exact file
-          const normFile = path.normalize(filePath);
-          exec(`explorer.exe /select,"${normFile}"`, (err) => {
-            if (err) {
-              exec(`explorer.exe "${path.normalize(dir)}"`);
-            }
-          });
-        } else {
-          exec(`explorer.exe "${path.normalize(dir)}"`);
-        }
-      } else if (osType === 'mac') {
-        if (filePath && fs.existsSync(filePath)) {
-          exec(`open -R "${filePath}"`);
-        } else {
-          exec(`open "${dir}"`);
-        }
-      } else if (osType === 'linux') {
-        exec(`xdg-open "${dir}"`);
-      }
-
-      res.json({ success: true, path: dir });
-    } catch (err) {
-      console.error('[OpenDownloads Error]:', err);
-      res.status(500).json({ error: err.message });
-    }
   });
 
   /**
@@ -520,10 +514,10 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
       const osType = getDeviceOS();
       if (osType === 'windows') {
         const norm = path.normalize(targetPath);
-        const escaped = norm.replace(/'/g, "''");
-        exec(`powershell -NoProfile -Command "Start-Process -LiteralPath '${escaped}'"`, (err) => {
+        exec(`cmd.exe /c start "" "${norm}"`, (err) => {
           if (err) {
-            exec(`cmd.exe /c start "" "${norm}"`);
+            const escaped = norm.replace(/'/g, "''");
+            exec(`powershell -NoProfile -Command "Start-Process -LiteralPath '${escaped}'"`);
           }
         });
       } else if (osType === 'mac') {

@@ -1,11 +1,16 @@
 // FileFly Service Worker with dynamic asset caching
-const CACHE_NAME = 'filefly-shell-v40';
+const CACHE_NAME = 'filefly-shell-v41';
 const STATIC_ASSETS = [
   '/',
   '/manifest.json',
   '/icon.svg',
   '/icon-192.png',
-  '/icon-512.png'
+  '/icon-512.png',
+  '/sounds/request.wav',
+  '/sounds/accepted.wav',
+  '/sounds/success.wav',
+  '/sounds/declined.wav',
+  '/sounds/click.wav'
 ];
 
 self.addEventListener('install', (event) => {

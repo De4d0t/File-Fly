@@ -4,6 +4,13 @@ import crypto from 'crypto';
 import os from 'os';
 
 const HISTORY_FILE = path.join(os.homedir(), '.filefly', 'history.json');
+const TRANSIT_BASE_DIR = path.join(os.tmpdir(), 'filefly_transit');
+
+if (!fs.existsSync(TRANSIT_BASE_DIR)) {
+  try {
+    fs.mkdirSync(TRANSIT_BASE_DIR, { recursive: true });
+  } catch (_) {}
+}
 
 export class TransferEngine {
   constructor(config, onEvent = () => {}) {
@@ -11,12 +18,28 @@ export class TransferEngine {
     this.onEvent = onEvent; // Sends targeted events (type, payload, targetIds)
     this.activeTransfers = new Map(); // transferId -> transferState
     this.history = this.loadHistory();
+    this.saveHistory();
   }
 
   loadHistory() {
     try {
       if (fs.existsSync(HISTORY_FILE)) {
-        return JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8'));
+        const raw = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8'));
+        if (Array.isArray(raw)) {
+          const seen = new Set();
+          const hostId = this.config?.id;
+          const filtered = raw.filter((item) => {
+            if (!item || !item.id || seen.has(item.id)) return false;
+            seen.add(item.id);
+            // Strict Privacy: Only retain records where host was an involved party
+            if (hostId && item.senderId && item.recipientId) {
+              const isHostParty = item.senderId === hostId || item.recipientId === hostId || item.recipientId === 'host';
+              if (!isHostParty) return false;
+            }
+            return true;
+          });
+          return filtered;
+        }
       }
     } catch (e) {
       console.error('Error loading history:', e);
@@ -26,7 +49,14 @@ export class TransferEngine {
 
   saveHistory() {
     try {
-      const trimmed = this.history.slice(0, 100);
+      const seen = new Set();
+      const deduped = (this.history || []).filter((item) => {
+        if (!item || !item.id || seen.has(item.id)) return false;
+        seen.add(item.id);
+        return true;
+      });
+      this.history = deduped;
+      const trimmed = deduped.slice(0, 100);
       fs.writeFileSync(HISTORY_FILE, JSON.stringify(trimmed, null, 2), 'utf8');
     } catch (e) {
       console.error('Error saving history:', e);
@@ -52,6 +82,44 @@ export class TransferEngine {
     return candidate;
   }
 
+  getTransferDir(transferId) {
+    if (transferId) {
+      const transfer = this.activeTransfers.get(transferId);
+      if (transfer?.isTransit && transfer.transitDir) {
+        if (!fs.existsSync(transfer.transitDir)) {
+          try {
+            fs.mkdirSync(transfer.transitDir, { recursive: true });
+          } catch (_) {}
+        }
+        return transfer.transitDir;
+      }
+    }
+    const targetDir = this.config.downloadsDir || path.join(os.homedir(), 'Downloads');
+    if (!fs.existsSync(targetDir)) {
+      try {
+        fs.mkdirSync(targetDir, { recursive: true });
+      } catch (_) {}
+    }
+    return targetDir;
+  }
+
+  isTransitTransfer(transferId) {
+    const transfer = this.activeTransfers.get(transferId);
+    return Boolean(transfer?.isTransit);
+  }
+
+  cleanupTransitFiles(transferId) {
+    try {
+      const transitDir = path.join(TRANSIT_BASE_DIR, transferId);
+      if (fs.existsSync(transitDir)) {
+        fs.rmSync(transitDir, { recursive: true, force: true });
+        console.log(`[FileFly Transit] Cleaned up temporary transit files for ${transferId}`);
+      }
+    } catch (e) {
+      console.warn(`[FileFly Transit] Error cleaning up transit files for ${transferId}:`, e.message);
+    }
+  }
+
   /**
    * Registers a transfer request strictly targeted from sender to recipient
    */
@@ -59,9 +127,21 @@ export class TransferEngine {
     const transferId = crypto.randomUUID();
     const totalBytes = files.reduce((acc, f) => acc + (Number(f.size) || 0), 0);
 
+    const isTargetingHost = recipient.id === this.config.id || !recipient.id || recipient.id === 'host';
+    const isTransit = !isTargetingHost;
+    const transitDir = isTransit ? path.join(TRANSIT_BASE_DIR, transferId) : null;
+    if (transitDir && !fs.existsSync(transitDir)) {
+      try {
+        fs.mkdirSync(transitDir, { recursive: true });
+      } catch (_) {}
+    }
+
     const transfer = {
       id: transferId,
       batch: batch || null,
+      isHostRecipient: isTargetingHost,
+      isTransit,
+      transitDir,
       sender: {
         id: sender.id,
         name: sender.name,
@@ -97,7 +177,6 @@ export class TransferEngine {
     this.activeTransfers.set(transferId, transfer);
 
     // Dispatch notification strictly to recipient client or host
-    const isTargetingHost = recipient.id === this.config.id || !recipient.id || recipient.id === 'host';
     const targetIds = isTargetingHost ? [this.config.id, 'host'] : [recipient.id];
 
     this.notifyUI('TRANSFER_REQUEST', transfer, targetIds);
@@ -112,6 +191,11 @@ export class TransferEngine {
     const transfer = this.activeTransfers.get(transferId);
     if (!transfer) return { error: 'Transfer not found' };
 
+    const targetIds = [transfer.sender.id, transfer.recipient.id];
+    if (transfer.isHostRecipient || transfer.sender.id === this.config.id) {
+      targetIds.push(this.config.id, 'host');
+    }
+
     if (decision === 'accept') {
       transfer.status = 'accepted';
       transfer.startTime = Date.now();
@@ -124,13 +208,17 @@ export class TransferEngine {
       }
 
       // Notify sender and recipient that transfer was accepted
-      this.notifyUI('TRANSFER_ACCEPTED', transfer, [transfer.sender.id, transfer.recipient.id]);
+      this.notifyUI('TRANSFER_ACCEPTED', transfer, targetIds);
       return { success: true, status: 'accepted', transferId, acceptedFileNames: transfer.acceptedFileNames || null };
     } else {
       transfer.status = 'declined';
 
+      if (transfer.isTransit) {
+        this.cleanupTransitFiles(transferId);
+      }
+
       // Notify sender and recipient that transfer was declined
-      this.notifyUI('TRANSFER_DECLINED', transfer, [transfer.sender.id, transfer.recipient.id]);
+      this.notifyUI('TRANSFER_DECLINED', transfer, targetIds);
       setTimeout(() => {
         this.activeTransfers.delete(transferId);
       }, 15000);
@@ -174,8 +262,13 @@ export class TransferEngine {
           : 0,
       };
 
-      // Notify both parties involved in this transfer
-      this.notifyUI('TRANSFER_PROGRESS', progressData, [transfer.sender.id, transfer.recipient.id]);
+      const targetIds = [transfer.sender.id, transfer.recipient.id];
+      if (transfer.isHostRecipient || transfer.sender.id === this.config.id) {
+        targetIds.push(this.config.id, 'host');
+      }
+
+      // Notify strictly the parties involved in this transfer
+      this.notifyUI('TRANSFER_PROGRESS', progressData, targetIds);
     }
   }
 
@@ -199,6 +292,9 @@ export class TransferEngine {
     const transfer = this.activeTransfers.get(transferId);
     if (!transfer) return;
 
+    // Idempotency: Do not process completion multiple times for the same transfer
+    if (transfer.status === 'completed') return;
+
     transfer.status = 'completed';
     transfer.endTime = Date.now();
     transfer.bytesTransferred = transfer.totalBytes;
@@ -206,25 +302,46 @@ export class TransferEngine {
 
     const historyItem = {
       id: transfer.id,
+      senderId: transfer.sender?.id || null,
+      recipientId: transfer.recipient?.id || null,
       senderName: transfer.sender.name,
       recipientName: transfer.recipient.name,
       filesCount: transfer.files.length,
       firstFileName: transfer.files[0]?.name || 'ملف',
-      savedPath: transfer.files[0]?.savedPath || null,
       totalBytes: transfer.totalBytes,
       completedAt: Date.now(),
       durationSec: Math.max(1, Math.round((transfer.endTime - (transfer.startTime || transfer.createdAt)) / 1000)),
     };
 
-    this.history.unshift(historyItem);
-    this.saveHistory();
+    // PRIVACY: Only record into server history.json if host is directly involved (sender or recipient)
+    const isServerParty = (
+      transfer.isHostRecipient || 
+      transfer.sender?.id === this.config.id || 
+      transfer.recipient?.id === this.config.id
+    );
 
-    // Notify both parties (strictly sender and recipient)
+    if (isServerParty) {
+      const alreadyInHistory = this.history.some((h) => h.id === transfer.id);
+      if (!alreadyInHistory) {
+        this.history.unshift(historyItem);
+        this.saveHistory();
+      }
+    }
+
+    // Strictly notify sender and recipient (and host ONLY if host is an involved party)
     const targetIds = [transfer.sender.id, transfer.recipient.id];
-    if (transfer.recipient.id === this.config.id || transfer.recipient.id === 'host') {
+    if (isServerParty) {
       targetIds.push(this.config.id, 'host');
     }
-    this.notifyUI('TRANSFER_COMPLETED', { ...transfer, historyItem, savedPath: transfer.savedPath }, targetIds);
+
+    this.notifyUI('TRANSFER_COMPLETED', { ...transfer, historyItem, savedPath: transfer.isHostRecipient ? transfer.savedPath : null }, targetIds);
+
+    // If transit transfer: Fallback safety timeout (15 mins) to wipe files if recipient never downloads
+    if (transfer.isTransit) {
+      setTimeout(() => {
+        this.cleanupTransitFiles(transferId);
+      }, 15 * 60 * 1000);
+    }
 
     setTimeout(() => {
       this.activeTransfers.delete(transferId);
@@ -241,7 +358,16 @@ export class TransferEngine {
     transfer.status = 'cancelled';
     transfer.cancelReason = reason;
 
-    this.notifyUI('TRANSFER_CANCELLED', { id: transferId, reason }, null);
+    if (transfer.isTransit) {
+      this.cleanupTransitFiles(transferId);
+    }
+
+    const targetIds = [transfer.sender.id, transfer.recipient.id];
+    if (transfer.isHostRecipient || transfer.sender.id === this.config.id) {
+      targetIds.push(this.config.id, 'host');
+    }
+
+    this.notifyUI('TRANSFER_CANCELLED', { id: transferId, reason }, targetIds);
     this.activeTransfers.delete(transferId);
   }
 
@@ -258,13 +384,10 @@ export class TransferEngine {
       return { success: true, cancelled: true };
     }
 
-    // Notify sender and recipient about updated files across all their possible connection IDs
-    const targetIds = [
-      transfer.sender?.id, 
-      transfer.recipient?.id, 
-      this.config.id, 
-      'host'
-    ].filter(Boolean);
+    const targetIds = [transfer.sender?.id, transfer.recipient?.id];
+    if (transfer.isHostRecipient || transfer.sender?.id === this.config.id) {
+      targetIds.push(this.config.id, 'host');
+    }
 
     this.notifyUI('TRANSFER_UPDATED', transfer, targetIds);
     return { success: true, files: transfer.files, totalBytes: transfer.totalBytes };
@@ -275,6 +398,18 @@ export class TransferEngine {
   }
 
   getHistory() {
+    return this.history;
+  }
+
+  clearHistory() {
+    this.history = [];
+    this.saveHistory();
+    return [];
+  }
+
+  deleteHistoryItem(itemId) {
+    this.history = (this.history || []).filter((h) => h.id !== itemId);
+    this.saveHistory();
     return this.history;
   }
 

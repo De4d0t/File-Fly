@@ -151,7 +151,59 @@ export function FileFlyProvider({ children }) {
 
   const [isOnline, setIsOnline] = useState(false);
   const [peers, setPeers] = useState([]);
-  const [history, setHistory] = useState([]);
+
+  const [history, setHistory] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('filefly_client_history');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          return Array.isArray(parsed) ? parsed.filter((i) => i && (i.id || i.firstFileName)) : [];
+        }
+      } catch (_) {}
+    }
+    return [];
+  });
+
+  const addHistoryRecord = (record) => {
+    setHistory((prev) => {
+      const updated = [record, ...(prev || []).filter((h) => h.id !== record.id)].slice(0, 60);
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('filefly_client_history', JSON.stringify(updated));
+        } catch (_) {}
+      }
+      return updated;
+    });
+  };
+
+  const clearHistory = async () => {
+    setHistory([]);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.removeItem('filefly_client_history');
+      } catch (_) {}
+    }
+    try {
+      await apiFetch('/api/history/clear', { method: 'POST' });
+    } catch (_) {}
+  };
+
+  const deleteHistoryItem = async (itemId) => {
+    if (!itemId) return;
+    setHistory((prev) => {
+      const updated = (prev || []).filter((h) => h.id !== itemId);
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('filefly_client_history', JSON.stringify(updated));
+        } catch (_) {}
+      }
+      return updated;
+    });
+    try {
+      await apiFetch(`/api/history/delete/${encodeURIComponent(itemId)}`, { method: 'POST' });
+    } catch (_) {}
+  };
   const [isScanning, setIsScanning] = useState(false);
   const [isRadarActive, setIsRadarActive] = useState(true);
 
@@ -323,7 +375,8 @@ export function FileFlyProvider({ children }) {
         data.isLocalHost ||
         window.fileflyDesktop ||
         window.location.hostname === 'localhost' ||
-        window.location.hostname === '127.0.0.1'
+        window.location.hostname === '127.0.0.1' ||
+        (typeof window !== 'undefined' && localStorage.getItem('filefly_is_host') === 'true')
       );
 
       if (isHost && host) {
@@ -368,9 +421,33 @@ export function FileFlyProvider({ children }) {
         if (data.peers) {
           setPeers(processPeersList(data.peers, clientDevice));
         }
+
+        // Remote client (Phone / Tablet): Strictly load only this client's transfers!
+        try {
+          const saved = localStorage.getItem('filefly_client_history');
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            const valid = Array.isArray(parsed) ? parsed.filter((i) => i && (i.id || i.firstFileName)) : [];
+            if (valid.length > 0) setHistory(valid);
+          }
+        } catch (_) {}
       }
 
-      if (data.history) setHistory(data.history);
+      // Server history strictly applied only for host machine
+      if (isHost) {
+        if (data.history && Array.isArray(data.history) && data.history.length > 0) {
+          setHistory(data.history);
+        } else {
+          apiFetch('/api/history')
+            .then((r) => r.json())
+            .then((d) => {
+              if (d.history && Array.isArray(d.history) && d.history.length > 0) {
+                setHistory(d.history);
+              }
+            })
+            .catch(() => {});
+        }
+      }
     };
 
     const processPeersList = (rawPeers, overrideDevice = null) => {
@@ -414,6 +491,24 @@ export function FileFlyProvider({ children }) {
     };
 
     const unsubInitEvent = socketService.on('INIT_STATE', unsubInit);
+
+    const unsubClientHistory = socketService.on('CLIENT_HISTORY', (clientHistory) => {
+      if (Array.isArray(clientHistory) && clientHistory.length > 0) {
+        setHistory((prev) => {
+          const map = new Map();
+          [...(prev || []), ...clientHistory].forEach((item) => {
+            if (item?.id && !map.has(item.id)) map.set(item.id, item);
+          });
+          const merged = Array.from(map.values()).slice(0, 60);
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem('filefly_client_history', JSON.stringify(merged));
+            } catch (_) {}
+          }
+          return merged;
+        });
+      }
+    });
 
     const unsubPeers = socketService.on('PEERS_UPDATE', (peersList) => {
       setPeers(processPeersList(peersList));
@@ -615,14 +710,20 @@ export function FileFlyProvider({ children }) {
 
     // Transfer completed
     const unsubCompleted = socketService.on('TRANSFER_COMPLETED', (transfer) => {
+      const currentMyId = myDeviceRef.current?.id;
+      const currentHostId = hostDeviceRef.current?.id;
+      const activeId = activeTransferRef.current?.id;
+      const resolvedCount = transfer.files?.length || transfer.historyItem?.filesCount || 1;
+      const resolvedFirstFileName = transfer.historyItem?.firstFileName || transfer.firstFileName || transfer.files?.[0]?.name || 'ملف';
+
       // STRICT ISOLATION: Ignore if this device is not the sender and not the intended recipient
-      const isSender = transfer.sender?.id === myDevice?.id;
-      const isRecipient = transfer.recipient?.id === myDevice?.id || 
-                          (isHostMachine && (transfer.recipient?.id === 'host' || transfer.recipient?.id === hostDeviceRef.current?.id || transfer.recipient?.id === myDevice?.id));
-      const isMyActiveSession = activeTransfer?.id === transfer.id;
+      const isSender = transfer.sender?.id === currentMyId;
+      const isRecipient = transfer.recipient?.id === currentMyId || 
+                          (isHostMachine && (transfer.recipient?.id === 'host' || transfer.recipient?.id === currentHostId || transfer.recipient?.id === currentMyId));
+      const isMyActiveSession = activeId === transfer.id;
 
       if (!isSender && !isRecipient && !isMyActiveSession) {
-        // Third-party device on network (e.g. desktop when phone sends to laptop). Ignore completely!
+        // Third-party device on network: Strict privacy, completely ignore
         return;
       }
 
@@ -635,11 +736,8 @@ export function FileFlyProvider({ children }) {
 
       setActiveTransfer((prev) => {
         const id = transfer.id || prev?.id;
-        const firstFileName = transfer.historyItem?.firstFileName || transfer.firstFileName || prev?.firstFileName || 'ملف';
+        const firstFileName = resolvedFirstFileName || prev?.firstFileName || 'ملف';
         const isIncoming = isIncomingTransfer || prev?.direction === 'incoming';
-
-        // Keep completed transfer state for user interaction without automatically opening the file
-        const resolvedCount = transfer.files?.length || transfer.historyItem?.filesCount || prev?.filesCount || 1;
 
         const resolvedSavedPath = transfer.savedPath || transfer.historyItem?.savedPath || transfer.files?.[0]?.savedPath || prev?.savedPath || null;
         const resolvedFiles = (transfer.files || transfer.historyItem?.files || prev?.files || []).map((f, idx) => ({
@@ -674,15 +772,24 @@ export function FileFlyProvider({ children }) {
       });
 
       // Show system notification for completion
-      const firstFileName = transfer.historyItem?.firstFileName || transfer.firstFileName || 'الملف';
       showSystemNotification('اكتمل نقل الملف بنجاح! 🎉', {
-        body: `تم استلام ${firstFileName} بنجاح عبر FileFly.`,
+        body: `تم استلام ${resolvedFirstFileName} بنجاح عبر FileFly.`,
         tag: 'filefly-transfer',
       });
 
-      if (transfer.historyItem) {
-        setHistory((prev) => [transfer.historyItem, ...prev]);
-      }
+      const clientHistoryItem = {
+        ...(transfer.historyItem || {}),
+        id: transfer.id,
+        direction: isIncomingTransfer ? 'incoming' : 'outgoing',
+        partnerName: isIncomingTransfer
+          ? (transfer.sender?.name || 'مرسل')
+          : (transfer.recipient?.name || 'مستلم'),
+        firstFileName: resolvedFirstFileName,
+        filesCount: resolvedCount,
+        totalBytes: transfer.totalBytes || 0,
+        completedAt: Date.now(),
+      };
+      addHistoryRecord(clientHistoryItem);
 
       // Keep outgoing completion visible for 25s; incoming remains until receiver clicks dismiss or 3 mins
       setTimeout(() => {
@@ -728,6 +835,29 @@ export function FileFlyProvider({ children }) {
       setPendingIncomingRequest(null);
     });
 
+    const unsubHistoryCleared = socketService.on('HISTORY_CLEARED', () => {
+      setHistory([]);
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.removeItem('filefly_client_history');
+        } catch (_) {}
+      }
+    });
+
+    const unsubHistoryDeleted = socketService.on('HISTORY_ITEM_DELETED', (payload) => {
+      if (payload?.id) {
+        setHistory((prev) => {
+          const updated = (prev || []).filter((h) => h.id !== payload.id);
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem('filefly_client_history', JSON.stringify(updated));
+            } catch (_) {}
+          }
+          return updated;
+        });
+      }
+    });
+
     return () => {
       window.removeEventListener('offline', handleWindowOffline);
       window.removeEventListener('beforeunload', handlePageExit);
@@ -735,6 +865,7 @@ export function FileFlyProvider({ children }) {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       unsubConnection();
       unsubInitEvent();
+      unsubClientHistory();
       unsubPeers();
       unsubScanStatus();
       unsubDevice();
@@ -745,6 +876,8 @@ export function FileFlyProvider({ children }) {
       unsubCompleted();
       unsubDeclined();
       unsubCancelled();
+      unsubHistoryCleared();
+      unsubHistoryDeleted();
     };
   }, [isHostMachine]);
 
@@ -1052,18 +1185,15 @@ export function FileFlyProvider({ children }) {
             );
           });
 
-          setHistory((prev) => [
-            {
-              id: transferId,
-              direction: 'outgoing',
-              partnerName: peer.name,
-              filesCount: 1,
-              firstFileName: currentFile.name,
-              totalBytes: currentFile.size,
-              completedAt: Date.now(),
-            },
-            ...prev,
-          ]);
+          addHistoryRecord({
+            id: transferId,
+            direction: 'outgoing',
+            partnerName: peer.name,
+            filesCount: 1,
+            firstFileName: currentFile.name,
+            totalBytes: currentFile.size,
+            completedAt: Date.now(),
+          });
 
           if (i < totalFilesCount - 1) {
             setActiveTransfer((prev) => prev ? {
@@ -1227,18 +1357,15 @@ export function FileFlyProvider({ children }) {
             return { ...prev, status: 'completed', percentage: 100 };
           });
 
-          setHistory((prev) => [
-            {
-              id: transferId,
-              direction: 'outgoing',
-              partnerName: peer.name,
-              filesCount: filesToUpload.length,
-              firstFileName: filesToUpload[0]?.name || 'ملفات',
-              totalBytes: filesToUpload.reduce((acc, f) => acc + (f.size || 0), 0),
-              completedAt: Date.now(),
-            },
-            ...prev,
-          ]);
+          addHistoryRecord({
+            id: transferId,
+            direction: 'outgoing',
+            partnerName: peer.name,
+            filesCount: filesToUpload.length,
+            firstFileName: filesToUpload[0]?.name || 'ملفات',
+            totalBytes: filesToUpload.reduce((acc, f) => acc + (f.size || 0), 0),
+            completedAt: Date.now(),
+          });
 
           setTimeout(() => {
             setActiveTransfer((curr) => (curr?.status === 'completed' ? null : curr));
@@ -1357,56 +1484,6 @@ export function FileFlyProvider({ children }) {
     }
   };
 
-  // Open Downloads Folder in Explorer (on host PC or via API)
-  const openDownloadsFolder = async (itemOrPath) => {
-    let filePath = null;
-    if (typeof itemOrPath === 'string') {
-      filePath = itemOrPath;
-    } else if (itemOrPath?.savedPath) {
-      filePath = itemOrPath.savedPath;
-    } else if (itemOrPath?.files?.[0]?.savedPath) {
-      filePath = itemOrPath.files[0].savedPath;
-    } else if (itemOrPath?.historyItem?.savedPath) {
-      filePath = itemOrPath.historyItem.savedPath;
-    }
-
-    if (isHostMachine) {
-      if (typeof window !== 'undefined' && window.fileflyDesktop) {
-        if (filePath && window.fileflyDesktop.showInFolder) {
-          window.fileflyDesktop.showInFolder(filePath);
-          return;
-        }
-        if (window.fileflyDesktop.openDownloadsFolder) {
-          window.fileflyDesktop.openDownloadsFolder();
-          return;
-        }
-      }
-      try {
-        await apiFetch('/api/open-downloads', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ filePath }),
-        });
-      } catch (e) {
-        console.error('Failed to open downloads folder:', e);
-      }
-    } else {
-      // In web browser (e.g. Laptop 2): download file to browser Downloads
-      const transferId = itemOrPath?.id || activeTransfer?.id;
-      const fileName = itemOrPath?.firstFileName || activeTransfer?.firstFileName || 'downloaded_file';
-      if (transferId) {
-        const link = document.createElement('a');
-        link.href = `${getServerBaseUrl()}/api/transfer/download/${transferId}/0`;
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      } else {
-        setIsHistoryModalOpen(true);
-      }
-    }
-  };
-
   // Open / Run Received File directly in Windows default program
   const openFile = async (itemOrTransfer) => {
     const transferId = itemOrTransfer?.id;
@@ -1448,10 +1525,10 @@ export function FileFlyProvider({ children }) {
       value={{
         myDevice,
         isOnline,
-        isHostMachine,
         isMobileClient: typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || ''),
         peers,
         history,
+        setHistory,
         isScanning,
         isRadarActive,
         toggleRadar,
@@ -1471,8 +1548,8 @@ export function FileFlyProvider({ children }) {
         toggleVisibility,
         updateDeviceName,
         refreshPeers,
-        openDownloadsFolder,
         openFile,
+        isHostMachine: Boolean(myDevice?.isHost || isHostMachine),
         respondToIncomingRequest,
         sendFilesToDevice,
         cancelActiveTransfer,
@@ -1481,6 +1558,8 @@ export function FileFlyProvider({ children }) {
         activeServerUrl,
         updateActiveServer,
         apiFetch,
+        clearHistory,
+        deleteHistoryItem,
         reconnectSocket: () => socketService.reconnectNow(),
       }}
     >
