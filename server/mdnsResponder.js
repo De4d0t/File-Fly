@@ -1,5 +1,5 @@
 import dgram from 'dgram';
-import { getPrimaryLocalIP } from './networkUtils.js';
+import { getPrimaryLocalIP, getLocalIPAddresses } from './networkUtils.js';
 
 const MDNS_MULTICAST_ADDR = '224.0.0.251';
 const MDNS_PORT = 5353;
@@ -99,7 +99,7 @@ function buildAResponse(domain, ipAddress, txId = 0) {
  * - filefly.local
  */
 export class MdnsResponder {
-  constructor(hostnames = ['fly.local', 'f.local', 'filefly.local']) {
+  constructor(hostnames = ['fly.local']) {
     this.hostnames = hostnames.map((h) => h.toLowerCase());
     this.socket = null;
     this.isRunning = false;
@@ -159,16 +159,35 @@ export class MdnsResponder {
 
     this.socket.on('listening', () => {
       this.isRunning = true;
+      const allIps = getLocalIPAddresses();
+      const primaryIP = getPrimaryLocalIP();
+
       try {
         this.socket.setBroadcast(true);
         this.socket.setMulticastTTL(255);
         this.socket.setMulticastLoopback(true);
-        this.socket.addMembership(MDNS_MULTICAST_ADDR);
-      } catch (e) {
-        // Membership might fail if network interface isn't up yet
+      } catch (_) {}
+
+      // Add multicast membership for all local network adapters (especially Wi-Fi)
+      for (const iface of allIps) {
+        try {
+          this.socket.addMembership(MDNS_MULTICAST_ADDR, iface.address);
+        } catch (_) {}
       }
 
-      console.log(`[mDNS] Local hostname responder active: http://fly.local / http://f.local`);
+      // Also join default group
+      try {
+        this.socket.addMembership(MDNS_MULTICAST_ADDR);
+      } catch (_) {}
+
+      // Route outgoing multicast packets through primary network interface (Wi-Fi)
+      if (primaryIP && primaryIP !== '127.0.0.1') {
+        try {
+          this.socket.setMulticastInterface(primaryIP);
+        } catch (_) {}
+      }
+
+      console.log(`[mDNS] Local hostname responder active: http://fly.local`);
     });
 
     try {

@@ -1,36 +1,9 @@
 /**
- * Authentic Windows Sound Effects Engine for FileFly
- * Uses genuine Windows system sounds with zero-latency Web Audio buffer caching,
- * with graceful procedural synthesis fallback.
+ * Sound Effects & Alert Service for FileFly
+ * Features strict per-sound debouncing to guarantee that every action
+ * (Request, Accept, Decline, Complete) produces strictly ONE single clean sound.
  */
 
-let audioCtx = null;
-const audioBuffers = new Map();
-const pendingLoads = new Map();
-
-export function getAudioContext() {
-  if (typeof window === 'undefined') return null;
-  if (!audioCtx) {
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if (AudioContextClass) {
-      audioCtx = new AudioContextClass();
-    }
-  }
-  return audioCtx;
-}
-
-export async function ensureAudioContext() {
-  const ctx = getAudioContext();
-  if (!ctx) return null;
-  if (ctx.state === 'suspended') {
-    try {
-      await ctx.resume();
-    } catch (e) {}
-  }
-  return ctx;
-}
-
-// Sound file mappings (located in public/sounds/)
 const SOUND_FILES = {
   request: '/sounds/request.wav',
   accepted: '/sounds/accepted.wav',
@@ -39,110 +12,190 @@ const SOUND_FILES = {
   click: '/sounds/click.wav',
 };
 
-async function loadSoundBuffer(key) {
-  if (audioBuffers.has(key)) return audioBuffers.get(key);
-  if (pendingLoads.has(key)) return pendingLoads.get(key);
+const audioCache = new Map();
+const lastSoundTimes = new Map();
+let audioCtx = null;
 
-  const loadPromise = (async () => {
-    try {
-      const ctx = getAudioContext();
-      if (!ctx) return null;
-      const res = await fetch(SOUND_FILES[key]);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const arrayBuffer = await res.arrayBuffer();
-      const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
-      audioBuffers.set(key, audioBuffer);
-      return audioBuffer;
-    } catch (err) {
-      return null;
-    } finally {
-      pendingLoads.delete(key);
+function getAudioContext() {
+  if (typeof window === 'undefined') return null;
+  if (!audioCtx) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (AudioContextClass) {
+      audioCtx = new AudioContextClass();
     }
-  })();
-
-  pendingLoads.set(key, loadPromise);
-  return loadPromise;
+  }
+  if (audioCtx && audioCtx.state === 'suspended') {
+    audioCtx.resume().catch(() => {});
+  }
+  return audioCtx;
 }
 
-export function preloadAllSounds() {
-  if (typeof window === 'undefined') return;
-  Object.keys(SOUND_FILES).forEach((key) => {
-    loadSoundBuffer(key).catch(() => {});
+// Automatically unlock AudioContext on any user interaction with the page
+if (typeof window !== 'undefined') {
+  const unlockAudio = () => {
+    const ctx = getAudioContext();
+    if (ctx && ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
+    window.removeEventListener('pointerdown', unlockAudio);
+    window.removeEventListener('keydown', unlockAudio);
+    window.removeEventListener('click', unlockAudio);
+  };
+  window.addEventListener('pointerdown', unlockAudio, { passive: true });
+  window.addEventListener('keydown', unlockAudio, { passive: true });
+  window.addEventListener('click', unlockAudio, { passive: true });
+}
+
+// Pre-instantiate and preload audio files for zero-latency, glitch-free playback
+if (typeof window !== 'undefined') {
+  Object.entries(SOUND_FILES).forEach(([key, src]) => {
+    try {
+      const audio = new Audio(src);
+      audio.preload = 'auto';
+      audioCache.set(key, audio);
+    } catch (_) {}
   });
 }
 
-// Global user-gesture audio unlocker for mobile & desktop browsers (specifically iOS Safari & Chrome)
-if (typeof window !== 'undefined') {
-  let isUnlocked = false;
-
-  const unlockAudio = async () => {
-    if (isUnlocked) return;
-    try {
-      const ctx = getAudioContext();
-      if (!ctx) return;
-
-      if (ctx.state === 'suspended') {
-        await ctx.resume();
-      }
-
-      // Play 1-frame silent buffer to permanently unlock audio hardware
-      const buffer = ctx.createBuffer(1, 1, 22050);
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      source.connect(ctx.destination);
-      source.start(0);
-
-      isUnlocked = true;
-      preloadAllSounds();
-    } catch (e) {}
-  };
-
-  window.addEventListener('pointerdown', unlockAudio, { passive: true, capture: true });
-  window.addEventListener('touchstart', unlockAudio, { passive: true, capture: true });
-  window.addEventListener('touchend', unlockAudio, { passive: true, capture: true });
-  window.addEventListener('click', unlockAudio, { passive: true, capture: true });
-  window.addEventListener('keydown', unlockAudio, { passive: true, capture: true });
-
-  // Preload shortly after initial load
-  setTimeout(preloadAllSounds, 600);
-}
+let lastAnySoundTime = 0;
 
 /**
- * Plays a preloaded audio buffer with zero latency and volume control
+ * Strict per-sound cooldown timer to prevent duplicate triggers
  */
-async function playBufferSound(key, volume = 0.5) {
-  try {
-    const ctx = await ensureAudioContext();
-    if (!ctx) return false;
-
-    let buffer = audioBuffers.get(key);
-    if (!buffer) {
-      buffer = await loadSoundBuffer(key);
-    }
-
-    if (buffer) {
-      const source = ctx.createBufferSource();
-      const gainNode = ctx.createGain();
-      source.buffer = buffer;
-      gainNode.gain.setValueAtTime(volume, ctx.currentTime);
-      source.connect(gainNode);
-      gainNode.connect(ctx.destination);
-      source.start(0);
-      return true;
-    }
-
-    // HTML5 Audio element fallback
-    const audio = new Audio(SOUND_FILES[key]);
-    audio.volume = Math.min(1, Math.max(0, volume));
-    await audio.play();
-    return true;
-  } catch (err) {
+function canPlaySound(key, cooldownMs = 1800) {
+  const now = Date.now();
+  const last = lastSoundTimes.get(key) || 0;
+  if (now - last < cooldownMs) {
     return false;
   }
+  // Prevent two alert sounds from colliding within 600ms
+  if (key !== 'click' && now - lastAnySoundTime < 600) {
+    return false;
+  }
+  lastSoundTimes.set(key, now);
+  if (key !== 'click') {
+    lastAnySoundTime = now;
+  }
+  return true;
 }
 
 /**
- * Request system notification permission with fallback
+ * Fallback synthesizer chime ONLY if audio file playback is blocked by browser autoplay policy
+ */
+function playFallbackChime(notes = [{ freq: 659.25, dur: 0.2 }, { freq: 880.0, dur: 0.35 }], volume = 0.45) {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
+
+    let offset = 0;
+    notes.forEach(({ freq, dur }) => {
+      const startTime = ctx.currentTime + offset;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, startTime);
+
+      gain.gain.setValueAtTime(0, startTime);
+      gain.gain.linearRampToValueAtTime(volume, startTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startTime + dur);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(startTime);
+      osc.stop(startTime + dur + 0.05);
+
+      offset += dur * 0.75;
+    });
+  } catch (_) {}
+}
+
+/**
+ * Plays strictly a single sound. Guaranteed never to duplicate.
+ */
+function playSingleSound(key, volume = 0.5, fallbackNotes = null) {
+  if (typeof window === 'undefined') return;
+
+  // Strict debounce: ignore any duplicate call within cooldown
+  if (!canPlaySound(key)) return;
+
+  try {
+    let audio = audioCache.get(key);
+    if (!audio) {
+      audio = new Audio(SOUND_FILES[key] || SOUND_FILES.click);
+      audioCache.set(key, audio);
+    }
+    audio.currentTime = 0;
+    audio.volume = Math.max(0, Math.min(1, volume));
+    const playPromise = audio.play();
+
+    if (playPromise !== undefined) {
+      playPromise.catch((err) => {
+        // ONLY fallback if explicitly blocked by browser Autoplay policy (NotAllowedError)
+        // Never fallback on AbortError or normal interruptions
+        if (err && err.name === 'NotAllowedError' && fallbackNotes) {
+          playFallbackChime(fallbackNotes, volume * 0.8);
+        }
+      });
+    }
+  } catch (_) {}
+}
+
+/**
+ * Audible single notification when someone sends a file (Arrival Alert)
+ */
+export function playTransferRequestSound() {
+  playSingleSound('request', 0.85, [
+    { freq: 659.25, dur: 0.2 },
+    { freq: 880.00, dur: 0.35 },
+  ]);
+}
+
+/**
+ * Audible single notification when transfer is accepted
+ */
+export function playTransferAcceptedSound() {
+  playSingleSound('accepted', 0.7, [
+    { freq: 523.25, dur: 0.15 },
+    { freq: 659.25, dur: 0.25 },
+  ]);
+}
+
+/**
+ * Audible single notification when transfer completes
+ */
+export function playSuccessSound() {
+  playSingleSound('success', 0.8, [
+    { freq: 523.25, dur: 0.12 },
+    { freq: 659.25, dur: 0.14 },
+    { freq: 783.99, dur: 0.16 },
+    { freq: 1046.50, dur: 0.35 },
+  ]);
+}
+
+/**
+ * Audible single notification when transfer is declined or cancelled
+ */
+export function playDeclinedSound() {
+  playSingleSound('declined', 0.65, [
+    { freq: 440, dur: 0.15 },
+    { freq: 349.23, dur: 0.25 },
+  ]);
+}
+
+/**
+ * Button click sound
+ */
+export function playButtonClickSound() {
+  playSingleSound('click', 0.4);
+}
+
+/**
+ * Request system notification permission
  */
 export async function requestNotificationPermission() {
   if (typeof window !== 'undefined' && 'Notification' in window) {
@@ -162,188 +215,22 @@ export async function requestNotificationPermission() {
  * Trigger system notification banner on Windows, Mac, or Android
  */
 export function showSystemNotification(title, options = {}) {
-  if (typeof window !== 'undefined' && 'Notification' in window) {
-    if (Notification.permission === 'granted') {
-      try {
-        const notif = new Notification(title, {
-          icon: '/icon-192.png',
-          badge: '/icon-192.png',
-          silent: true,
-          ...options,
-        });
+  if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+    try {
+      const notif = new Notification(title, {
+        icon: '/icon-192.png',
+        badge: '/icon-192.png',
+        silent: false,
+        ...options,
+      });
 
-        notif.onclick = () => {
-          window.focus();
-          notif.close();
-        };
+      notif.onclick = () => {
+        window.focus();
+        notif.close();
+      };
 
-        return notif;
-      } catch (e) {}
-    }
+      return notif;
+    } catch (_) {}
   }
-}
-
-/**
- * Windows Notification chime when receiving a new transfer request
- * (Genuine Windows Notify.wav)
- */
-export async function playTransferRequestSound() {
-  try {
-    if (typeof navigator !== 'undefined' && navigator.vibrate) {
-      navigator.vibrate([160, 80, 160, 80, 240]);
-    }
-
-    const played = await playBufferSound('request', 0.65);
-    if (played) return;
-
-    // Fallback: procedural Windows Notification simulation
-    const ctx = await ensureAudioContext();
-    if (!ctx) return;
-    const now = ctx.currentTime;
-    [
-      { freq: 830.6, delay: 0.0, dur: 0.35, vol: 0.3 },
-      { freq: 1108.7, delay: 0.12, dur: 0.55, vol: 0.35 },
-    ].forEach(({ freq, delay, dur, vol }) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(freq, now + delay);
-      gain.gain.setValueAtTime(0, now + delay);
-      gain.gain.linearRampToValueAtTime(vol, now + delay + 0.015);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + delay + dur);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now + delay);
-      osc.stop(now + delay + dur + 0.05);
-    });
-  } catch (e) {}
-}
-
-/**
- * Windows Hardware Insert chime when a transfer is accepted & starts
- * (Genuine Windows Hardware Insert.wav)
- */
-export async function playTransferAcceptedSound() {
-  try {
-    const played = await playBufferSound('accepted', 0.6);
-    if (played) return;
-
-    // Fallback: procedural Hardware Insert simulation
-    const ctx = await ensureAudioContext();
-    if (!ctx) return;
-    const now = ctx.currentTime;
-    [
-      { freq: 523.25, delay: 0.00, dur: 0.18, vol: 0.28 },
-      { freq: 659.25, delay: 0.08, dur: 0.18, vol: 0.32 },
-      { freq: 783.99, delay: 0.16, dur: 0.35, vol: 0.38 },
-    ].forEach(({ freq, delay, dur, vol }) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(freq, now + delay);
-      gain.gain.setValueAtTime(0, now + delay);
-      gain.gain.linearRampToValueAtTime(vol, now + delay + 0.01);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + delay + dur);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now + delay);
-      osc.stop(now + delay + dur + 0.05);
-    });
-  } catch (e) {}
-}
-
-/**
- * Windows Print Complete fanfare chime when file transfer finishes successfully
- * (Genuine Windows Print complete.wav)
- */
-export async function playSuccessSound() {
-  try {
-    if (typeof navigator !== 'undefined' && navigator.vibrate) {
-      navigator.vibrate([100, 50, 150]);
-    }
-
-    const played = await playBufferSound('success', 0.6);
-    if (played) return;
-
-    // Fallback: procedural Windows success simulation
-    const ctx = await ensureAudioContext();
-    if (!ctx) return;
-    const now = ctx.currentTime;
-    [
-      { freq: 659.25, delay: 0.00, dur: 0.3, vol: 0.25 },
-      { freq: 783.99, delay: 0.10, dur: 0.35, vol: 0.30 },
-      { freq: 1046.50, delay: 0.20, dur: 0.55, vol: 0.38 },
-    ].forEach(({ freq, delay, dur, vol }) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(freq, now + delay);
-      gain.gain.setValueAtTime(0, now + delay);
-      gain.gain.linearRampToValueAtTime(vol, now + delay + 0.015);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + delay + dur);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now + delay);
-      osc.stop(now + delay + dur + 0.05);
-    });
-  } catch (e) {}
-}
-
-/**
- * Windows Hardware Remove sound when a transfer is declined, cancelled, or fails
- * (Genuine Windows Hardware Remove.wav)
- */
-export async function playDeclinedSound() {
-  try {
-    const played = await playBufferSound('declined', 0.55);
-    if (played) return;
-
-    // Fallback: procedural Hardware Remove simulation
-    const ctx = await ensureAudioContext();
-    if (!ctx) return;
-    const now = ctx.currentTime;
-    [
-      { freq: 783.99, delay: 0.00, dur: 0.18, vol: 0.32 },
-      { freq: 523.25, delay: 0.10, dur: 0.35, vol: 0.28 },
-    ].forEach(({ freq, delay, dur, vol }) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(freq, now + delay);
-      gain.gain.setValueAtTime(0, now + delay);
-      gain.gain.linearRampToValueAtTime(vol, now + delay + 0.01);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + delay + dur);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now + delay);
-      osc.stop(now + delay + dur + 0.05);
-    });
-  } catch (e) {}
-}
-
-/**
- * Windows Navigation Start sound for UI clicks
- * (Genuine Windows Navigation Start.wav)
- */
-export async function playButtonClickSound() {
-  try {
-    const played = await playBufferSound('click', 0.45);
-    if (played) return;
-
-    // Fallback: procedural click
-    const ctx = await ensureAudioContext();
-    if (!ctx) return;
-    const now = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(1200, now);
-    osc.frequency.exponentialRampToValueAtTime(300, now + 0.03);
-    gain.gain.setValueAtTime(0.06, now);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.03);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start(now);
-    osc.stop(now + 0.04);
-  } catch (e) {}
+  return null;
 }

@@ -359,22 +359,11 @@ export default function ActiveTransfers() {
 
               {/* Drag Hint - Only on PC / Laptop with mouse */}
               {!isMobile && (
-                <div className="w-full text-[11px] text-emerald-300/90 flex items-center justify-center gap-1.5 mb-2.5 bg-emerald-950/20 py-1.5 px-3 rounded-xl border border-emerald-500/20">
+                <div className="w-full text-[11px] text-emerald-300/90 flex items-center justify-center gap-1.5 mb-1 bg-emerald-950/20 py-1.5 px-3 rounded-xl border border-emerald-500/20">
                   <Move className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                   <span>اسحب الملف بالفأرة إلى سطح المكتب مباشرة!</span>
                 </div>
               )}
-
-              {/* Primary Call-to-Action */}
-              <div className="w-full pt-2">
-                <button
-                  type="button"
-                  onClick={dismissActiveTransfer}
-                  className="w-full py-3 px-4 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-xs sm:text-sm font-semibold transition-all flex items-center justify-center gap-2 active:scale-98 cursor-pointer shadow-sm"
-                >
-                  <span>تم (إغلاق)</span>
-                </button>
-              </div>
             </div>
           )}
 

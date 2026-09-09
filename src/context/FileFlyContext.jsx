@@ -566,12 +566,6 @@ export function FileFlyProvider({ children }) {
         activeBatchRef.current?.batchId === transfer.batch.batchId &&
         Date.now() < activeBatchRef.current?.expiresAt
       ) {
-        socketService.send('TRANSFER_DECISION', {
-          transferId: transfer.id,
-          decision: 'accept',
-          responderId: currentId,
-        });
-
         apiFetch('/api/transfer/respond', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -799,7 +793,10 @@ export function FileFlyProvider({ children }) {
 
     // Transfer declined by recipient
     const unsubDeclined = socketService.on('TRANSFER_DECLINED', (transfer) => {
-      playDeclinedSound();
+      const isSender = transfer?.sender?.id === myDeviceRef.current?.id;
+      if (isSender) {
+        playDeclinedSound();
+      }
       setActiveTransfer((prev) => {
         if (!prev || (transfer?.id && prev.id && prev.id !== transfer.id)) return prev;
         return {
@@ -880,39 +877,6 @@ export function FileFlyProvider({ children }) {
       unsubHistoryDeleted();
     };
   }, [isHostMachine]);
-
-  // Safety polling fallback for incoming transfers so completion is never missed on mobile/browser
-  useEffect(() => {
-    if (!activeTransfer || activeTransfer.direction !== 'incoming' || activeTransfer.status !== 'transferring' || !activeTransfer.id) {
-      return;
-    }
-
-    const transferId = activeTransfer.id;
-    const interval = setInterval(async () => {
-      try {
-        const res = await apiFetch(`/api/transfer/status/${encodeURIComponent(transferId)}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.status === 'completed') {
-            playSuccessSound();
-            setActiveTransfer((curr) => {
-              if (curr?.id === transferId && curr?.status !== 'completed') {
-                return {
-                  ...curr,
-                  status: 'completed',
-                  percentage: 100,
-                  bytesTransferred: curr.totalBytes || data.totalBytes || curr.bytesTransferred,
-                };
-              }
-              return curr;
-            });
-          }
-        }
-      } catch (_) {}
-    }, 1200);
-
-    return () => clearInterval(interval);
-  }, [activeTransfer?.id, activeTransfer?.direction, activeTransfer?.status]);
 
   // Toggle Visibility (مكشوف / مخفي)
   const toggleVisibility = async () => {
@@ -1005,13 +969,6 @@ export function FileFlyProvider({ children }) {
         batch: request.batch || null,
       });
 
-      socketService.send('TRANSFER_DECISION', {
-        transferId: transferId,
-        decision: 'accept',
-        responderId: myDevice.id,
-        acceptedFileNames,
-      });
-
       try {
         await apiFetch('/api/transfer/respond', {
           method: 'POST',
@@ -1022,11 +979,6 @@ export function FileFlyProvider({ children }) {
     } else {
       activeBatchRef.current = null;
       playDeclinedSound();
-      socketService.send('TRANSFER_DECISION', {
-        transferId: transferId,
-        decision: 'decline',
-        responderId: myDevice.id,
-      });
 
       // Show temporary declined status toast on recipient screen
       setActiveTransfer({

@@ -37,16 +37,25 @@ export function normalizeServerUrl(rawInput) {
 export function getServerBaseUrl() {
   if (typeof window === 'undefined') return `http://127.0.0.1:${DEFAULT_PORT}`;
 
+  const host = window.location.hostname;
+  const currentPort = window.location.port;
+
+  // If the page is loaded directly from a live FileFly server (not Vite port 5173)
+  if (host && currentPort !== '5173') {
+    const port = currentPort || DEFAULT_PORT;
+    return `${window.location.protocol}//${host}:${port}`;
+  }
+
+  // If running on Vite dev server (5173) or offline PWA, check saved custom server
   const custom = localStorage.getItem(STORAGE_KEY);
   if (custom) {
     const normalized = normalizeServerUrl(custom);
     if (normalized) return normalized;
   }
 
-  // Fallback to current browser location host & port
-  const host = window.location.hostname || 'localhost';
-  const port = window.location.port === '5173' ? DEFAULT_PORT : (window.location.port || DEFAULT_PORT);
-  return `http://${host}:${port}`;
+  // Fallback to current host with DEFAULT_PORT
+  const fallbackHost = host || 'localhost';
+  return `http://${fallbackHost}:${DEFAULT_PORT}`;
 }
 
 /**
@@ -137,77 +146,101 @@ function getSubnetPrefix(ip) {
 }
 
 /**
+ * Detects phone/client's actual local Wi-Fi IP address via WebRTC ICE candidate
+ */
+export async function detectLocalDeviceIP() {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined' || typeof RTCPeerConnection === 'undefined') {
+      return resolve(null);
+    }
+    try {
+      const pc = new RTCPeerConnection({ iceServers: [] });
+      pc.createDataChannel('');
+      pc.createOffer().then((offer) => pc.setLocalDescription(offer)).catch(() => resolve(null));
+
+      const timer = setTimeout(() => {
+        try { pc.close(); } catch (_) {}
+        resolve(null);
+      }, 1000);
+
+      pc.onicecandidate = (event) => {
+        if (!event || !event.candidate || !event.candidate.candidate) return;
+        const candidate = event.candidate.candidate;
+        const match = candidate.match(/([0-9]{1,3}(\.[0-9]{1,3}){3})/);
+        if (match && match[1] && !match[1].startsWith('127.')) {
+          clearTimeout(timer);
+          try { pc.close(); } catch (_) {}
+          resolve(match[1]);
+        }
+      };
+    } catch (_) {
+      resolve(null);
+    }
+  });
+}
+
+/**
  * Scans local network candidates continuously in the background
  * Resolves with the found server { ok: true, url, data } or null if aborted/none found
  */
 export async function scanLocalNetworkForServer(onProgress = () => {}, abortSignal = null) {
-  // 1. Try local hostnames first (Fast mDNS resolution)
-  const quickHosts = [
+  // 1. Try local hostname first (Fast mDNS resolution for iOS / Mac / Windows)
+  // and common default hotspot gateways
+  const candidates = [
     'fly.local',
-    'filefly.local',
     '192.168.137.1', // Windows Mobile Hotspot default
     '172.20.10.1',   // iOS Hotspot default
     '192.168.43.1',  // Android Hotspot default
   ];
 
-  for (const host of quickHosts) {
+  // Try current browser hostname if present and not localhost
+  if (typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    candidates.unshift(window.location.hostname);
+  }
+
+  // Try saved server in localStorage
+  if (typeof window !== 'undefined') {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      const norm = normalizeServerUrl(saved);
+      if (norm) {
+        try {
+          const host = new URL(norm).hostname;
+          if (host && !candidates.includes(host)) candidates.unshift(host);
+        } catch (_) {}
+      }
+    }
+  }
+
+  // Fast check across candidates
+  for (const host of candidates) {
     if (abortSignal?.aborted) return null;
     onProgress({ status: 'checking_host', target: host });
 
     const result = await checkServerHealth(`http://${host}:${DEFAULT_PORT}`, 600);
-    if (result.ok) {
+    if (result && result.ok) {
       return result;
     }
   }
 
-  // 2. Determine Subnets to scan
-  const subnetsToScan = new Set();
-
-  // Try current browser hostname if it's an IP
-  const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
-  const currentSubnet = getSubnetPrefix(currentHost);
-  if (currentSubnet) {
-    subnetsToScan.add(currentSubnet);
-  }
-
-  // Common home & office subnets
-  subnetsToScan.add('192.168.1');
-  subnetsToScan.add('192.168.0');
-
-  // 3. Scan subnets in parallel batches of 20 with short timeouts
-  const BATCH_SIZE = 20;
-
-  for (const subnet of subnetsToScan) {
-    if (abortSignal?.aborted) return null;
-
-    onProgress({ status: 'scanning_subnet', subnet, current: 0, total: 254 });
-
-    // Generate IP list 1-254
-    const ips = Array.from({ length: 254 }, (_, i) => `${subnet}.${i + 1}`);
-
-    for (let i = 0; i < ips.length; i += BATCH_SIZE) {
-      if (abortSignal?.aborted) return null;
-
-      const chunk = ips.slice(i, i + BATCH_SIZE);
-      onProgress({ 
-        status: 'scanning_subnet', 
-        subnet, 
-        current: Math.min(i + BATCH_SIZE, 254), 
-        total: 254,
-        activeChunk: chunk[0]
-      });
-
-      // Run chunk concurrently
-      const promises = chunk.map(ip => checkServerHealth(`http://${ip}:${DEFAULT_PORT}`, 450));
-      const results = await Promise.all(promises);
-
-      for (const res of results) {
-        if (res && res.ok) {
-          return res;
+  // If client Wi-Fi IP detected via WebRTC, check common router / gateway IPs on that subnet
+  try {
+    const clientIP = await detectLocalDeviceIP();
+    if (clientIP) {
+      const subnet = getSubnetPrefix(clientIP);
+      if (subnet) {
+        const gatewayCandidates = [`${subnet}.1`, `${subnet}.254`, `${subnet}.100`, `${subnet}.2`];
+        for (const gw of gatewayCandidates) {
+          if (abortSignal?.aborted) return null;
+          onProgress({ status: 'checking_host', target: gw });
+          const res = await checkServerHealth(`http://${gw}:${DEFAULT_PORT}`, 400);
+          if (res && res.ok) {
+            return res;
+          }
         }
       }
     }
-  }
+  } catch (_) {}
 
   return null;
 }

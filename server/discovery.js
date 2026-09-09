@@ -1,11 +1,8 @@
 import dgram from 'dgram';
 import { getPrimaryLocalIP, getDeviceOS, getBroadcastAddresses, saveDeviceConfig } from './networkUtils.js';
-import { SubnetScanner } from './subnetScanner.js';
-
 const DISCOVERY_PORT = 53317;
 const BROADCAST_INTERVAL_MS = 2500;
 const PEER_TIMEOUT_MS = 25000;
-const SUBNET_SCAN_INTERVAL_MS = 30000;
 
 export class PeerDiscovery {
   constructor(config, serverPort, onPeersUpdated = () => {}, onScanStatus = () => {}) {
@@ -18,23 +15,8 @@ export class PeerDiscovery {
     this.socket = null;
     this.broadcastTimer = null;
     this.cleanupTimer = null;
-    this.subnetScanTimer = null;
     this.isHostUIActive = false; // Only true when host machine browser/app UI is actively open
-
-    // Subnet Scanner for reliable LAN auto-discovery
-    this.scanner = new SubnetScanner(
-      config.id,
-      serverPort,
-      (discoveredPeer) => {
-        this.addOrUpdatePeer(discoveredPeer);
-      },
-      (status) => {
-        const scanning = typeof status === 'boolean' ? status : Boolean(status?.scanning);
-        if (typeof this.onScanStatus === 'function') {
-          this.onScanStatus({ scanning });
-        }
-      }
-    );
+    this.isRadarEnabled = true;
   }
 
   start() {
@@ -64,19 +46,6 @@ export class PeerDiscovery {
       // Start peer cleanup timer
       this.startCleanupTimer();
 
-      // Initial fast subnet scan
-      setTimeout(() => {
-        if (this.isRadarEnabled !== false) {
-          this.scanner.scanSubnet();
-        }
-      }, 1500);
-
-      // Periodic subnet scanner
-      this.subnetScanTimer = setInterval(() => {
-        if (this.isRadarEnabled !== false) {
-          this.scanner.scanSubnet();
-        }
-      }, SUBNET_SCAN_INTERVAL_MS);
     });
 
     try {
@@ -90,7 +59,6 @@ export class PeerDiscovery {
     this.isSocketBound = false;
     if (this.broadcastTimer) clearInterval(this.broadcastTimer);
     if (this.cleanupTimer) clearInterval(this.cleanupTimer);
-    if (this.subnetScanTimer) clearInterval(this.subnetScanTimer);
 
     if (this.config.visible) {
       try {
@@ -116,22 +84,8 @@ export class PeerDiscovery {
 
   setRadarActive(active) {
     this.isRadarEnabled = Boolean(active);
-    if (!this.isRadarEnabled) {
-      if (this.subnetScanTimer) {
-        clearInterval(this.subnetScanTimer);
-        this.subnetScanTimer = null;
-      }
-      if (this.scanner) {
-        this.scanner.isScanning = false;
-        this.scanner.onStatusChange({ scanning: false });
-      }
-    } else {
-      if (!this.subnetScanTimer) {
-        this.subnetScanTimer = setInterval(() => {
-          this.scanner.scanSubnet();
-        }, SUBNET_SCAN_INTERVAL_MS);
-      }
-      this.scanner.scanSubnet();
+    if (this.isRadarEnabled) {
+      this.announce('ANNOUNCE');
     }
   }
 

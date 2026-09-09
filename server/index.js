@@ -24,7 +24,7 @@ const wss = new WebSocketServer({ server });
 const config = getDeviceConfig();
 
 // Initialize mDNS Local Hostname Responder
-const mdnsResponder = new MdnsResponder(['fly.local', 'f.local', 'filefly.local']);
+const mdnsResponder = new MdnsResponder(['fly.local']);
 
 // Connected clients registry: ws -> { id, name, visible, os, ip, isLocalHost }
 const socketClientMap = new Map();
@@ -384,9 +384,6 @@ wss.on('connection', (ws, req) => {
         discovery.setRadarActive(active);
       } else if (type === 'REFRESH_PEERS' || type === 'SCAN_SUBNET') {
         discovery.announce('ANNOUNCE');
-        if (discovery.scanner) {
-          discovery.scanner.scanSubnet();
-        }
         ws.send(
           JSON.stringify({
             type: 'PEERS_UPDATE',
@@ -473,7 +470,7 @@ setInterval(() => {
 server.listen(PORT, '0.0.0.0', () => {
   const localIP = getPrimaryLocalIP();
   console.log(`\n🚀 [FileFly Server] Running on http://${localIP}:${PORT}`);
-  console.log(`🌐 [Quick mDNS Link] http://fly.local or http://f.local`);
+  console.log(`🌐 [Quick Link] http://fly.local:${PORT} (or http://fly.local)`);
   console.log(`📱 Connect phones via: http://${localIP}:${PORT}\n`);
   discovery.start();
   mdnsResponder.start();

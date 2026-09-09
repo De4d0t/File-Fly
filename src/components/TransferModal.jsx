@@ -22,9 +22,7 @@ import {
 import { useFileFly } from '../context/FileFlyContext.jsx';
 import { formatBytes } from '../utils/formatters.js';
 import { 
-  playTransferRequestSound, 
-  playTransferAcceptedSound, 
-  playDeclinedSound 
+  playTransferAcceptedSound 
 } from '../utils/soundEffects.js';
 
 export default function TransferModal() {
@@ -33,12 +31,14 @@ export default function TransferModal() {
   const [excludedFileNames, setExcludedFileNames] = useState(new Set());
   const timerRef = useRef(null);
 
-  // Play rich crystal sound when request first arrives
+  // Flash document title and start timer when request arrives
   useEffect(() => {
     if (pendingIncomingRequest) {
       setExcludedFileNames(new Set());
-      playTransferRequestSound();
       setTimeLeft(60);
+
+      const originalTitle = document.title;
+      document.title = '🔔 طلب استلام ملف جديد - FileFly';
 
       if (timerRef.current) clearInterval(timerRef.current);
       timerRef.current = setInterval(() => {
@@ -56,6 +56,7 @@ export default function TransferModal() {
       }, 1000);
 
       return () => {
+        document.title = originalTitle;
         if (timerRef.current) {
           clearInterval(timerRef.current);
           timerRef.current = null;
@@ -197,7 +198,6 @@ export default function TransferModal() {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
-    playDeclinedSound();
     respondToIncomingRequest('decline');
   };
 

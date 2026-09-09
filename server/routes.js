@@ -54,7 +54,7 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
   router.get('/health', (req, res) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     const clientIp = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').replace(/^.*:/, '');
-    const localIPs = ['127.0.0.1', 'localhost', ...getLocalIPAddresses()];
+    const localIPs = ['127.0.0.1', 'localhost', ...getLocalIPAddresses().map((a) => a.address)];
     const isHost = localIPs.includes(clientIp) || req.hostname === 'localhost' || req.hostname === '127.0.0.1';
     res.json({
       status: 'ok',
@@ -127,16 +127,12 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
   });
 
   /**
-   * Trigger Active Subnet Scan
+   * Trigger Peer Announcement & Refresh
    */
   router.post('/peers/scan', async (req, res) => {
-    if (discovery.scanner) {
-      discovery.scanner.scanSubnet();
-    }
     discovery.announce('ANNOUNCE');
     res.json({
       success: true,
-      message: 'جاري فحص عناوين الشبكة المحلية...',
       peers: discovery.getPeersList(),
     });
   });
