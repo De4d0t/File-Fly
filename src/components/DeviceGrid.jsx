@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
-  Power,
   Eye,
   EyeOff,
   Edit2,
@@ -333,6 +332,26 @@ function RadarSVG({ isActive, peers, myDevice, isVisible }) {
         strokeWidth="4"
         style={{ transition: 'stroke 0.5s' }}
       />
+
+      {/* ── Center Origin Hub (Precision Bullseye Dot) ── */}
+      <circle
+        cx={CX}
+        cy={CY}
+        r={8}
+        fill={isActive ? 'rgba(56,189,248,0.18)' : 'rgba(71,85,105,0.12)'}
+        stroke={isActive ? '#38bdf8' : '#475569'}
+        strokeWidth="1.2"
+        style={{ transition: 'stroke 0.4s, fill 0.4s' }}
+      />
+      <circle
+        cx={CX}
+        cy={CY}
+        r={3.5}
+        fill={isActive ? '#38bdf8' : '#64748b'}
+        filter={isActive ? 'url(#cyanGlow)' : undefined}
+        style={{ transition: 'fill 0.4s' }}
+      />
+      <circle cx={CX} cy={CY} r={1.2} fill="#ffffff" />
     </svg>
   )
 }
@@ -429,42 +448,40 @@ export default function DeviceGrid() {
           </div>
         </div>
 
-        {/* ── Radar + Button layout ── */}
+        {/* ── Interactive Radar Area (Click entire radar to toggle on/off) ── */}
         <div className="dg-radar-area">
-          {/* Radar SVG */}
-          <div
-            className={`dg-radar-wrap ${isRadarActive ? 'dg-radar-wrap--active' : ''}`}
-          >
-            <RadarSVG
-              isActive={isRadarActive}
-              peers={filteredPeers}
-              myDevice={myDevice}
-              isVisible={isVisible}
-            />
-          </div>
-
-          {/* Center power button — overlaid on radar center */}
           <button
             type="button"
             onClick={toggleRadar}
-            className={`dg-power-btn ${isRadarActive ? 'dg-power-btn--on' : 'dg-power-btn--off'}`}
-            title={isRadarActive ? 'إيقاف' : 'تشغيل'}
+            className="dg-radar-interactive group"
+            title={isRadarActive ? 'انقر على الرادار لإيقافه' : 'انقر على الرادار لتشغيله'}
+            aria-label={isRadarActive ? 'إيقاف تشغيل الرادار' : 'تشغيل الرادار'}
           >
-            <span className="dg-power-btn__glow" />
-            <span className="dg-power-btn__border" />
-            <span className="dg-power-btn__face">
-              <Power
-                strokeWidth={1.8}
-                className={`dg-power-icon ${isRadarActive ? 'dg-power-icon--on' : 'dg-power-icon--off'}`}
+            <div
+              className={`dg-radar-wrap ${isRadarActive ? 'dg-radar-wrap--active' : ''}`}
+            >
+              <RadarSVG
+                isActive={isRadarActive}
+                peers={filteredPeers}
+                myDevice={myDevice}
+                isVisible={isVisible}
               />
-            </span>
+            </div>
           </button>
         </div>
 
-        {/* ── Status bar (Sleek English ONLINE badge or Concise Disconnected Notice) ── */}
+        {/* ── Status bar (Sleek English ONLINE/OFFLINE badge or Concise Disconnected Notice) ── */}
         <div className="dg-status-bar">
           {!isRadarActive ? (
-            <span className="dg-status-text">الرادار متوقف</span>
+            <button
+              type="button"
+              onClick={toggleRadar}
+              className="dg-freq-tag flex items-center gap-1.5 text-slate-400 border-slate-700/60 bg-slate-800/40 hover:border-sky-500/40 hover:text-sky-300 hover:bg-slate-800/80 transition-all cursor-pointer select-none active:scale-95 shadow-xs"
+              title="انقر لتشغيل الرادار"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+              OFFLINE
+            </button>
           ) : showDisconnected ? (
             <button
               type="button"

@@ -6,6 +6,7 @@ export default defineConfig({
   server: {
     port: 5173,
     host: '0.0.0.0', // Allow accessing dev server from phone on LAN
+    allowedHosts: true, // Allow fly.local and any local LAN hostname in Vite 6
     proxy: {
       '/api': {
         target: 'http://localhost:53316',

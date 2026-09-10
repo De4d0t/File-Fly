@@ -336,11 +336,11 @@ export class TransferEngine {
 
     this.notifyUI('TRANSFER_COMPLETED', { ...transfer, historyItem, savedPath: transfer.isHostRecipient ? transfer.savedPath : null }, targetIds);
 
-    // If transit transfer: Fallback safety timeout (15 mins) to wipe files if recipient never downloads
+    // If transit transfer: Fallback safety timeout (3 mins) to wipe files if recipient never downloads
     if (transfer.isTransit) {
       setTimeout(() => {
         this.cleanupTransitFiles(transferId);
-      }, 15 * 60 * 1000);
+      }, 3 * 60 * 1000);
     }
 
     setTimeout(() => {

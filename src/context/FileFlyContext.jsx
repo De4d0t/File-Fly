@@ -775,6 +775,8 @@ export function FileFlyProvider({ children }) {
         ...(transfer.historyItem || {}),
         id: transfer.id,
         direction: isIncomingTransfer ? 'incoming' : 'outgoing',
+        senderName: transfer.sender?.name || (isIncomingTransfer ? (transfer.partnerName || 'مرسل') : (myDeviceRef.current?.name || 'جهازي')),
+        recipientName: transfer.recipient?.name || (isIncomingTransfer ? (myDeviceRef.current?.name || 'جهازي') : (transfer.partnerName || 'مستلم')),
         partnerName: isIncomingTransfer
           ? (transfer.sender?.name || 'مرسل')
           : (transfer.recipient?.name || 'مستلم'),
@@ -1140,6 +1142,8 @@ export function FileFlyProvider({ children }) {
           addHistoryRecord({
             id: transferId,
             direction: 'outgoing',
+            senderName: myDeviceRef.current?.name || 'جهازي',
+            recipientName: peer.name,
             partnerName: peer.name,
             filesCount: 1,
             firstFileName: currentFile.name,
@@ -1312,6 +1316,8 @@ export function FileFlyProvider({ children }) {
           addHistoryRecord({
             id: transferId,
             direction: 'outgoing',
+            senderName: myDeviceRef.current?.name || 'جهازي',
+            recipientName: peer.name,
             partnerName: peer.name,
             filesCount: filesToUpload.length,
             firstFileName: filesToUpload[0]?.name || 'ملفات',

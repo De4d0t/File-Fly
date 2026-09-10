@@ -84,6 +84,31 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
   });
 
   /**
+   * QR Code Generation Endpoint
+   */
+  router.get('/qr', async (req, res) => {
+    try {
+      const primaryIP = getPrimaryLocalIP();
+      const targetUrl = `http://${primaryIP}:${serverPort}`;
+      const qrDataUrl = await QRCode.toDataURL(targetUrl, {
+        margin: 2,
+        width: 280,
+        color: {
+          dark: '#0f172a',
+          light: '#ffffff',
+        },
+      });
+      res.json({
+        url: targetUrl,
+        qrDataUrl,
+        port: serverPort,
+      });
+    } catch (e) {
+      res.status(500).json({ error: 'Failed to generate QR code' });
+    }
+  });
+
+  /**
    * Toggle or Set Visibility
    */
   router.post('/visibility', (req, res) => {
@@ -358,10 +383,10 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
 
       res.sendFile(path.resolve(filePath), (err) => {
         if (!err && transferEngine.isTransitTransfer(transferId)) {
-          // Temporary transit file: wipe from server after recipient downloads
+          // Temporary transit file: wipe from server immediately after recipient finishes download
           setTimeout(() => {
             transferEngine.cleanupTransitFiles(transferId);
-          }, 8000);
+          }, 2000);
         }
       });
       return;
@@ -397,7 +422,7 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
       if (transferEngine.isTransitTransfer(transferId)) {
         setTimeout(() => {
           transferEngine.cleanupTransitFiles(transferId);
-        }, 8000);
+        }, 2000);
       }
     });
 
@@ -422,7 +447,11 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
     let historyList = transferEngine.getHistory();
     if (clientId) {
       historyList = historyList.filter((h) => h.senderId === clientId || h.recipientId === clientId);
-    } else if (!isHost) {
+    } else if (isHost) {
+      // Strict privacy: host ONLY sees transfers where host was an involved party (sender or recipient)
+      const hostId = config.id;
+      historyList = historyList.filter((h) => h.senderId === hostId || h.recipientId === hostId || h.recipientId === 'host');
+    } else {
       historyList = [];
     }
 
@@ -482,8 +511,11 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
     const { transferId, filePath, fileName } = req.body || {};
     let targetPath = filePath;
 
-    if (!targetPath && transferId) {
+    if (transferId) {
       const transfer = transferEngine.getTransfer(transferId);
+      if (transfer?.isTransit) {
+        return res.status(403).json({ error: 'Access denied: Private peer-to-peer transfer' });
+      }
       targetPath = transfer?.files?.[0]?.savedPath;
       if (!targetPath) {
         const historyItem = transferEngine.getHistory().find((h) => h.id === transferId);

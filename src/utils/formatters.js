@@ -78,6 +78,25 @@ export function getFileTypeCategory(filename = '') {
 }
 
 /**
+ * Formats timestamp to full date and time string in format: YYYY-M-D | 12:14 am
+ */
+export function formatHistoryDateTime(timestamp) {
+  if (!timestamp) return '--';
+  const d = new Date(timestamp);
+  if (isNaN(d.getTime())) return '--';
+  const year = d.getFullYear();
+  const month = d.getMonth() + 1;
+  const day = d.getDate();
+  const time = d.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).toLowerCase();
+
+  return `${year}-${month}-${day} | ${time}`;
+}
+
+/**
  * Universal safe UUID generator that works across all browsers & HTTP contexts
  */
 export function generateUUID() {

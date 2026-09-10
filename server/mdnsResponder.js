@@ -99,8 +99,9 @@ function buildAResponse(domain, ipAddress, txId = 0) {
  * - filefly.local
  */
 export class MdnsResponder {
-  constructor(hostnames = ['fly.local']) {
+  constructor(hostnames = ['fly.local'], port = 53316) {
     this.hostnames = hostnames.map((h) => h.toLowerCase());
+    this.port = port;
     this.socket = null;
     this.isRunning = false;
   }
@@ -187,7 +188,7 @@ export class MdnsResponder {
         } catch (_) {}
       }
 
-      console.log(`[mDNS] Local hostname responder active: http://fly.local`);
+      console.log(`[mDNS] Local hostname responder active: http://fly.local:${this.port}`);
     });
 
     try {

@@ -1,10 +1,7 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   History, 
   X, 
-  Download,
-  Upload,
-  CheckCircle2, 
   Trash2,
   FileText,
   Image as ImageIcon,
@@ -12,60 +9,115 @@ import {
   Music,
   Archive,
   Package,
-  File
+  File,
+  ArrowRight,
+  ArrowDownLeft,
+  ArrowUpRight,
+  Clock,
+  Smartphone,
+  Laptop,
+  Monitor,
+  ExternalLink
 } from 'lucide-react';
 import { useFileFly } from '../context/FileFlyContext.jsx';
-import { formatBytes } from '../utils/formatters.js';
+import { formatBytes, formatHistoryDateTime } from '../utils/formatters.js';
 
 function getFileVisuals(filename = '') {
   const ext = (filename || '').split('.').pop()?.toLowerCase() || '';
+  
   if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'heic', 'avif'].includes(ext)) {
     return {
       Icon: ImageIcon,
-      bgColor: 'bg-amber-500/10 border-amber-500/20',
+      category: 'Image',
+      ext: ext.toUpperCase(),
+      gradient: 'from-amber-500/25 via-orange-500/15 to-amber-600/5',
+      border: 'border-amber-500/30 group-hover:border-amber-500/50',
       iconColor: 'text-amber-400',
+      tagBg: 'bg-slate-950/95 text-amber-300 border-amber-500/40',
+      glow: 'group-hover:shadow-[0_0_24px_rgba(245,158,11,0.2)]',
     };
   }
   if (['mp4', 'mkv', 'avi', 'mov', 'webm', 'wmv', 'flv', 'm4v'].includes(ext)) {
     return {
       Icon: Film,
-      bgColor: 'bg-violet-500/10 border-violet-500/20',
+      category: 'Video',
+      ext: ext.toUpperCase(),
+      gradient: 'from-violet-500/25 via-purple-500/15 to-violet-600/5',
+      border: 'border-violet-500/30 group-hover:border-violet-500/50',
       iconColor: 'text-violet-400',
+      tagBg: 'bg-slate-950/95 text-violet-300 border-violet-500/40',
+      glow: 'group-hover:shadow-[0_0_24px_rgba(168,85,247,0.2)]',
     };
   }
   if (['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac', 'opus', 'wma'].includes(ext)) {
     return {
       Icon: Music,
-      bgColor: 'bg-pink-500/10 border-pink-500/20',
+      category: 'Audio',
+      ext: ext.toUpperCase(),
+      gradient: 'from-pink-500/25 via-rose-500/15 to-pink-600/5',
+      border: 'border-pink-500/30 group-hover:border-pink-500/50',
       iconColor: 'text-pink-400',
+      tagBg: 'bg-slate-950/95 text-pink-300 border-pink-500/40',
+      glow: 'group-hover:shadow-[0_0_24px_rgba(244,63,94,0.2)]',
     };
   }
   if (['zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz'].includes(ext)) {
     return {
       Icon: Archive,
-      bgColor: 'bg-yellow-500/10 border-yellow-500/20',
+      category: 'Archive',
+      ext: ext.toUpperCase(),
+      gradient: 'from-yellow-500/25 via-amber-500/15 to-yellow-600/5',
+      border: 'border-yellow-500/30 group-hover:border-yellow-500/50',
       iconColor: 'text-yellow-400',
+      tagBg: 'bg-slate-950/95 text-yellow-300 border-yellow-500/40',
+      glow: 'group-hover:shadow-[0_0_24px_rgba(234,179,8,0.2)]',
     };
   }
   if (['pdf', 'doc', 'docx', 'txt', 'epub', 'xlsx', 'pptx', 'csv', 'md'].includes(ext)) {
     return {
       Icon: FileText,
-      bgColor: 'bg-sky-500/10 border-sky-500/20',
+      category: 'Document',
+      ext: ext.toUpperCase(),
+      gradient: 'from-sky-500/25 via-blue-500/15 to-sky-600/5',
+      border: 'border-sky-500/30 group-hover:border-sky-500/50',
       iconColor: 'text-sky-400',
+      tagBg: 'bg-slate-950/95 text-sky-300 border-sky-500/40',
+      glow: 'group-hover:shadow-[0_0_24px_rgba(56,189,248,0.2)]',
     };
   }
   if (['exe', 'msi', 'apk', 'dmg', 'deb', 'iso'].includes(ext)) {
     return {
       Icon: Package,
-      bgColor: 'bg-emerald-500/10 border-emerald-500/20',
+      category: 'App',
+      ext: ext.toUpperCase(),
+      gradient: 'from-emerald-500/25 via-teal-500/15 to-emerald-600/5',
+      border: 'border-emerald-500/30 group-hover:border-emerald-500/50',
       iconColor: 'text-emerald-400',
+      tagBg: 'bg-slate-950/95 text-emerald-300 border-emerald-500/40',
+      glow: 'group-hover:shadow-[0_0_24px_rgba(168,85,247,0.2)]',
     };
   }
   return {
     Icon: File,
-    bgColor: 'bg-slate-800 border-slate-700/60',
+    category: 'File',
+    ext: ext ? ext.toUpperCase() : 'FILE',
+    gradient: 'from-slate-800/80 via-slate-800/50 to-slate-800/20',
+    border: 'border-slate-700/60 group-hover:border-slate-600',
     iconColor: 'text-slate-300',
+    tagBg: 'bg-slate-950/95 text-slate-300 border-slate-700',
+    glow: '',
   };
+}
+
+function getDeviceIcon(name = '') {
+  const lower = (name || '').toLowerCase();
+  if (lower.includes('iphone') || lower.includes('ipad') || lower.includes('ios') || lower.includes('phone') || lower.includes('android')) {
+    return Smartphone;
+  }
+  if (lower.includes('mac') || lower.includes('laptop') || lower.includes('book')) {
+    return Laptop;
+  }
+  return Monitor;
 }
 
 export default function HistoryModal() {
@@ -75,13 +127,16 @@ export default function HistoryModal() {
     history, 
     setHistory,
     isHostMachine, 
+    clearHistory,
     deleteHistoryItem,
+    openFile,
     myDevice,
     apiFetch
   } = useFileFly();
 
   useEffect(() => {
     if (isHistoryModalOpen) {
+      
       const endpoint = isHostMachine 
         ? '/api/history' 
         : `/api/history?clientId=${encodeURIComponent(myDevice?.id || '')}`;
@@ -105,168 +160,230 @@ export default function HistoryModal() {
     }
   }, [isHistoryModalOpen, isHostMachine, myDevice?.id]);
 
+  // Close on ESC key
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && isHistoryModalOpen) {
+        setIsHistoryModalOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isHistoryModalOpen, setIsHistoryModalOpen]);
+
   if (!isHistoryModalOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/85 backdrop-blur-md">
-      <div className="relative w-full max-w-xl rounded-2xl sm:rounded-3xl glass-panel p-4 sm:p-6 border border-slate-700/80 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200"
+    >
+      <div 
+        className="relative w-full max-w-xl max-h-[90vh] flex flex-col rounded-3xl glass-panel border border-slate-700/80 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200"
+      >
         
-        {/* Header */}
-        <div className="flex items-center justify-between pb-3.5 sm:pb-4 mb-3.5 sm:mb-4 border-b border-slate-800">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-purple-500/15 border border-purple-500/30 text-purple-400 flex items-center justify-center shrink-0 shadow-inner">
-              <History className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-lg sm:text-xl font-bold text-white tracking-tight">سجل النقل</h3>
-                {history.length > 0 && (
-                  <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-purple-500/15 text-purple-300 border border-purple-500/25">
-                    {history.length}
-                  </span>
-                )}
+        {/* Header (Arabic title & description as requested) */}
+        <div className="p-4 sm:p-5 pb-3 sm:pb-4 border-b border-slate-800/90 shrink-0 bg-slate-950/40">
+          <div className="flex items-center justify-between gap-3" dir="rtl">
+            {/* Title & Badge */}
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-gradient-to-br from-violet-500/25 to-indigo-500/10 border border-violet-500/30 text-violet-400 flex items-center justify-center shrink-0 shadow-inner">
+                <History className="w-5 h-5" />
               </div>
-              <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5">
-                قائمة بالملفات المنقولة والمستلمة
-              </p>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-lg sm:text-xl font-bold text-white tracking-tight">
+                    سجل النقل
+                  </h3>
+                  {history.length > 0 && (
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-violet-500/15 text-violet-300 border border-violet-500/25">
+                      {history.length}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  سجل خاص بالملفات المنقولة والمستلمة عبر الشبكة المحلية
+                </p>
+              </div>
+            </div>
+
+            {/* Header Action: Close */}
+            <div className="flex items-center gap-2" dir="ltr">
+              <button
+                onClick={() => setIsHistoryModalOpen(false)}
+                className="p-2 sm:p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white border border-slate-700/80 transition-all active:scale-95"
+                title="إغلاق"
+                aria-label="إغلاق"
+              >
+                <X className="w-4 h-4 sm:w-5 sm:h-5" />
+              </button>
             </div>
           </div>
-
-          {/* Close Button */}
-          <button
-            onClick={() => setIsHistoryModalOpen(false)}
-            className="p-2 sm:p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white border border-slate-700/80 transition-all duration-150 active:scale-95"
-            title="إغلاق"
-            aria-label="إغلاق"
-          >
-            <X className="w-4 h-4 sm:w-5 sm:h-5" />
-          </button>
         </div>
 
-        {/* List of Items */}
-        <div className="max-h-[60vh] sm:max-h-96 overflow-y-auto space-y-2.5 sm:space-y-3 pr-0.5">
+        {/* List of Items (English Cards with Two-Tier Layout) */}
+        <div 
+          className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-3 custom-scrollbar min-h-[220px]"
+          dir="ltr"
+        >
           {history.length > 0 ? (
             history.map((item, idx) => {
               const isIncoming = item.direction 
                 ? item.direction === 'incoming' 
                 : (item.recipientName === myDevice?.name || (item.senderName && item.senderName !== myDevice?.name));
-              const partner = item.partnerName || (isIncoming ? item.senderName : item.recipientName) || 'جهاز';
               
-              // Standard English 12h time string
-              const dateStr = item.completedAt
-                ? new Date(item.completedAt).toLocaleTimeString('en-US', {
-                    hour: 'numeric',
-                    minute: '2-digit',
-                    hour12: true,
-                  })
-                : '--';
+              const myName = myDevice?.name || 'My Device';
+              const sender = item.senderName || (isIncoming ? (item.partnerName || 'Peer') : myName);
+              const recipient = item.recipientName || (isIncoming ? myName : (item.partnerName || 'Peer'));
+              
+              const isMeSender = sender === myName || sender === myDevice?.name || sender === 'جهازي';
+              const isMeRecipient = recipient === myName || recipient === myDevice?.name || recipient === 'جهازي';
+
+              // Timestamp formatted: YYYY-M-D | 12:14 am
+              const rawTimestamp = item.completedAt || item.timestamp || item.createdAt;
+              const dateStr = formatHistoryDateTime(rawTimestamp);
 
               const visual = getFileVisuals(item.firstFileName);
               const VisualIcon = visual.Icon;
+              const SenderIcon = getDeviceIcon(sender);
+              const RecipientIcon = getDeviceIcon(recipient);
 
               return (
                 <div
                   key={item.id || idx}
-                  className="flex items-center justify-between gap-3 sm:gap-4 p-3 sm:p-3.5 rounded-2xl bg-slate-900/60 hover:bg-slate-900/90 border border-slate-800/90 hover:border-slate-700/80 transition-all duration-200 group shadow-sm"
+                  className="relative overflow-hidden rounded-2xl bg-gradient-to-b from-slate-900/95 via-slate-900/80 to-slate-950/95 border border-slate-800/90 hover:border-slate-700/80 transition-all duration-200 group shadow-md hover:shadow-xl hover:-translate-y-0.5"
                 >
-                  {/* Right side in RTL: File Icon & Detailed Info */}
-                  <div className="flex items-center gap-3 min-w-0 flex-1 overflow-hidden">
-                    {/* File Type Avatar */}
-                    <div className="shrink-0">
-                      <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl border flex items-center justify-center shadow-sm ${visual.bgColor}`}>
-                        <VisualIcon className={`w-5 h-5 sm:w-6 sm:h-6 ${visual.iconColor}`} />
+                  {/* Top Tier: File Profile & Metrics */}
+                  <div className="p-3 sm:p-3.5 flex items-center justify-between gap-3">
+                    
+                    {/* Left side: Avatar + File Metadata */}
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      
+                      {/* Avatar with Extension Micro-Tag */}
+                      <div className="relative shrink-0">
+                        <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-br ${visual.gradient} border ${visual.border} ring-1 ring-white/5 flex items-center justify-center transition-all duration-300 ${visual.glow}`}>
+                          <VisualIcon className={`w-5 h-5 sm:w-6 sm:h-6 ${visual.iconColor} drop-shadow-sm`} />
+                        </div>
+                        <span className={`absolute -bottom-1 -right-1 px-1.5 py-[0.5px] rounded-md text-[8.5px] font-black uppercase tracking-wider border shadow-sm ${visual.tagBg}`}>
+                          {visual.ext}
+                        </span>
+                      </div>
+
+                      {/* File Name & Badges */}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span 
+                            className="font-bold text-sm sm:text-[15px] text-white truncate group-hover:text-sky-300 transition-colors"
+                            title={item.firstFileName || 'File'}
+                          >
+                            {item.firstFileName || 'File'}
+                          </span>
+                          {item.filesCount > 1 && (
+                            <span className="px-1.5 py-0.5 rounded-md bg-violet-500/15 text-violet-300 border border-violet-500/25 text-[10px] font-semibold shrink-0">
+                              +{item.filesCount - 1} files
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Subtitle row: File Size */}
+                        <div className="mt-1">
+                          <span className="font-mono text-xs font-semibold text-slate-400">
+                            {formatBytes(item.totalBytes)}
+                          </span>
+                        </div>
                       </div>
                     </div>
 
-                    {/* File text info */}
-                    <div className="min-w-0 flex-1 overflow-hidden">
-                      {/* File Name & optional multi-count badge */}
-                      <div className="flex items-center gap-2">
-                        <span 
-                          className="font-semibold text-sm sm:text-[15px] text-slate-100 truncate hover:text-white transition-colors"
-                          title={item.firstFileName || 'ملف'}
+                    {/* Right side: Action Buttons */}
+                    <div className="flex items-center gap-2 shrink-0">
+
+                      {/* Open file action if available */}
+                      {openFile && (item.savedPath || isIncoming) && (
+                        <button
+                          onClick={() => openFile(item)}
+                          className="w-8 h-8 rounded-xl bg-slate-800/40 hover:bg-sky-500/15 text-slate-400 hover:text-sky-300 border border-slate-700/40 hover:border-sky-500/30 transition-all duration-150 active:scale-90 flex items-center justify-center opacity-80 group-hover:opacity-100"
+                          title="Open or preview file"
+                          aria-label="Open file"
                         >
-                          {item.firstFileName || 'ملف'}
-                        </span>
-                        {item.filesCount > 1 && (
-                          <span className="px-1.5 py-0.5 rounded-md bg-slate-800 text-slate-300 border border-slate-700/60 text-[10px] font-medium shrink-0">
-                            +{item.filesCount - 1} ملفات
-                          </span>
-                        )}
-                      </div>
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </button>
+                      )}
 
-                      {/* Subtitle row: Direction & Device • Time */}
-                      <div className="flex items-center gap-2 text-xs text-slate-400 mt-1">
-                        <span className="inline-flex items-center gap-1.5 text-slate-300 truncate max-w-[180px] sm:max-w-[240px]">
-                          {isIncoming ? (
-                            <Download className="w-3.5 h-3.5 text-sky-400 shrink-0" title="ملف مستلم" />
-                          ) : (
-                            <Upload className="w-3.5 h-3.5 text-purple-400 shrink-0" title="ملف مرسل" />
-                          )}
-                          <span className="text-slate-200 font-medium truncate">
-                            {partner}
-                          </span>
-                        </span>
-
-                        <span className="text-slate-600 select-none">•</span>
-
-                        {/* Strict LTR container for time to prevent bidirectional flipping */}
-                        <span 
-                          dir="ltr" 
-                          className="font-mono text-[11px] text-slate-400 shrink-0 inline-block"
-                        >
-                          {dateStr}
-                        </span>
-                      </div>
+                      {/* Delete item action */}
+                      <button
+                        onClick={() => deleteHistoryItem(item.id)}
+                        className="w-8 h-8 rounded-xl bg-slate-800/40 hover:bg-rose-500/15 text-slate-400 hover:text-rose-400 border border-slate-700/40 hover:border-rose-500/30 transition-all duration-150 active:scale-90 flex items-center justify-center opacity-70 group-hover:opacity-100"
+                        title="Remove from history"
+                        aria-label="Remove from history"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   </div>
 
-                  {/* Left side in RTL: Size, Status & Red Delete Button */}
-                  <div className="flex items-center gap-3 shrink-0">
-                    {/* Size & Status Column */}
-                    <div className="flex flex-col items-end gap-1 text-left">
-                      <span 
-                        dir="ltr" 
-                        className="font-mono text-xs font-bold text-slate-200 tracking-tight inline-block"
-                      >
-                        {formatBytes(item.totalBytes)}
+                  {/* Bottom Tier: Route & Timestamp Ledger Strip */}
+                  <div className="px-3 sm:px-3.5 py-2 bg-slate-950/70 border-t border-slate-800/70 flex items-center justify-between gap-2 text-[11px] sm:text-xs">
+                    {/* Route Flow */}
+                    <div className="inline-flex items-center gap-1.5 text-slate-300 font-medium truncate max-w-[240px] sm:max-w-[320px]">
+                      {/* Sender Chip */}
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-slate-900/90 border border-slate-800/80 text-slate-300 shadow-xs">
+                        <SenderIcon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <span className="truncate max-w-[85px] sm:max-w-[120px]" title={sender}>
+                          {sender} {isMeSender && <span className="text-[10px] text-sky-400 font-medium">(You)</span>}
+                        </span>
                       </span>
-                      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-400">
-                        <CheckCircle2 className="w-3 h-3" />
-                        <span>مكتمل</span>
+
+                      <ArrowRight className="w-3 h-3 text-slate-500 shrink-0" />
+
+                      {/* Recipient Chip - Exact matching unified color */}
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-slate-900/90 border border-slate-800/80 text-slate-300 shadow-xs">
+                        <RecipientIcon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <span className="truncate max-w-[85px] sm:max-w-[120px]" title={recipient}>
+                          {recipient} {isMeRecipient && <span className="text-[10px] text-sky-400 font-medium">(You)</span>}
+                        </span>
                       </span>
                     </div>
 
-                    {/* Subtle Vertical Divider */}
-                    <div className="w-px h-7 bg-slate-800" />
-
-                    {/* Refined Red Delete Button */}
-                    <button
-                      onClick={() => deleteHistoryItem(item.id)}
-                      className="w-9 h-9 rounded-xl bg-rose-500/10 hover:bg-rose-600 text-rose-400 hover:text-white border border-rose-500/20 hover:border-rose-600 transition-all duration-200 active:scale-95 shadow-sm group/btn flex items-center justify-center shrink-0"
-                      title="حذف من السجل"
-                      aria-label="حذف من السجل"
+                    {/* Date & Time Badge */}
+                    <div 
+                      className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-slate-900/80 border border-slate-800/70 text-slate-400 font-mono text-[10.5px] sm:text-[11px] shrink-0 shadow-xs"
+                      title="Completion date and time"
                     >
-                      <Trash2 className="w-4 h-4 transition-transform duration-200 group-hover/btn:scale-110" />
-                    </button>
+                      <Clock className="w-3 h-3 text-slate-500 shrink-0" />
+                      <span>{dateStr}</span>
+                    </div>
                   </div>
                 </div>
               );
             })
           ) : (
-            <div className="py-12 text-center flex flex-col items-center justify-center">
-              <div className="w-12 h-12 rounded-2xl bg-slate-800/60 border border-slate-700/50 flex items-center justify-center text-slate-500 mb-3">
+            <div className="py-14 text-center flex flex-col items-center justify-center" dir="rtl">
+              <div className="w-14 h-14 rounded-3xl bg-slate-800/50 border border-slate-700/50 flex items-center justify-center text-slate-500 mb-3.5 shadow-inner">
                 <History className="w-6 h-6" />
               </div>
-              <p className="text-sm font-semibold text-slate-300 mb-1">
+              <p className="text-base font-semibold text-slate-200 mb-1">
                 لا توجد عمليات نقل سابقة
               </p>
-              <p className="text-xs text-slate-500">
-                ستظهر هنا الملفات التي تقوم بإرسالها أو استلامها
+              <p className="text-xs text-slate-500 max-w-xs leading-relaxed">
+                ستظهر هنا الملفات والمستندات التي تقوم بإرسالها أو استلامها عبر الشبكة المحلية.
               </p>
             </div>
           )}
         </div>
+
+        {/* Modal Footer */}
+        <div className="p-3 sm:p-4 border-t border-slate-800/80 bg-slate-950/60 flex items-center justify-between text-xs text-slate-400 shrink-0" dir="rtl">
+          <div className="flex items-center gap-2 text-[11px]">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span>العمليات محلية 100% ومخزنة على جهازك فقط.</span>
+          </div>
+          <button
+            onClick={() => setIsHistoryModalOpen(false)}
+            className="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-semibold transition-all active:scale-95 text-xs shadow-sm border border-slate-700/80"
+          >
+            إغلاق
+          </button>
+        </div>
+
       </div>
     </div>
   );

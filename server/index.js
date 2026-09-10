@@ -24,7 +24,7 @@ const wss = new WebSocketServer({ server });
 const config = getDeviceConfig();
 
 // Initialize mDNS Local Hostname Responder
-const mdnsResponder = new MdnsResponder(['fly.local']);
+const mdnsResponder = new MdnsResponder(['fly.local'], PORT);
 
 // Connected clients registry: ws -> { id, name, visible, os, ip, isLocalHost }
 const socketClientMap = new Map();
@@ -106,28 +106,32 @@ app.use('/transfer', apiRouter);
 
 // Serve Static Assets & Frontend (Vite build output & public)
 const publicPath = path.join(__dirname, '..', 'public');
-if (fs.existsSync(publicPath)) {
-  app.use(express.static(publicPath));
-}
+app.use(express.static(publicPath));
 
 const distPath = path.join(__dirname, '..', 'dist');
-if (fs.existsSync(distPath)) {
-  app.use(express.static(distPath, {
-    setHeaders: (res, filePath) => {
-      if (filePath.endsWith('.html') || filePath.endsWith('sw.js')) {
-        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-        res.setHeader('Pragma', 'no-cache');
-        res.setHeader('Expires', '0');
-      }
+app.use(express.static(distPath, {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html') || filePath.endsWith('sw.js')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
     }
-  }));
-  app.get('*', (req, res) => {
+  }
+}));
+
+// Fallback for SPA routing or dev mode redirect to Vite
+app.get('*', (req, res) => {
+  const indexHtml = path.join(distPath, 'index.html');
+  if (fs.existsSync(indexHtml)) {
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
-    res.sendFile(path.join(distPath, 'index.html'));
-  });
-}
+    return res.sendFile(indexHtml);
+  }
+  // In dev mode if dist hasn't been built, redirect to Vite dev server
+  const host = (req.headers.host || '').split(':')[0] || 'localhost';
+  res.redirect(`http://${host}:5173${req.url}`);
+});
 
 // WebSocket Connection Handling
 wss.on('connection', (ws, req) => {
@@ -469,42 +473,13 @@ setInterval(() => {
 // Start Server
 server.listen(PORT, '0.0.0.0', () => {
   const localIP = getPrimaryLocalIP();
-  console.log(`\n🚀 [FileFly Server] Running on http://${localIP}:${PORT}`);
-  console.log(`🌐 [Quick Link] http://fly.local:${PORT} (or http://fly.local)`);
-  console.log(`📱 Connect phones via: http://${localIP}:${PORT}\n`);
+  console.log(`\n🚀 [FileFly Server] Running on:`);
+  console.log(`   ➜ Local:   http://localhost:${PORT}`);
+  console.log(`   ➜ Domain:  http://fly.local:${PORT}`);
+  console.log(`   ➜ Network: http://${localIP}:${PORT}\n`);
   discovery.start();
   mdnsResponder.start();
-  startRedirectServer(PORT);
 });
-
-// ── Port 80 Redirect Server ──────────────────────────────────────────────────
-// Redirects http://fly.local  →  http://fly.local:PORT
-// Works only when the process has permission to bind port 80.
-// Fails silently if another service owns port 80.
-let redirectServer = null;
-
-function startRedirectServer(mainPort) {
-  const redirectApp = express();
-  redirectApp.use((req, res) => {
-    const host = (req.headers.host || 'fly.local').replace(/:\d+$/, '');
-    res.redirect(301, `http://${host}:${mainPort}${req.url}`);
-  });
-
-  redirectServer = http.createServer(redirectApp);
-
-  redirectServer.on('error', (err) => {
-    if (err.code === 'EACCES') {
-      console.warn('[FileFly] Port 80 needs admin rights — fly.local will need :port suffix.');
-    } else if (err.code !== 'EADDRINUSE') {
-      console.warn('[FileFly] Port 80 redirect unavailable:', err.message);
-    }
-    redirectServer = null;
-  });
-
-  redirectServer.listen(80, '0.0.0.0', () => {
-    console.log('[FileFly] ✅ fly.local (port 80) redirect active → fly.local:' + PORT);
-  });
-}
 
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
@@ -528,7 +503,6 @@ process.on('SIGINT', () => {
   console.log('\n[FileFly Server] Shutting down...');
   discovery.stop();
   mdnsResponder.stop();
-  if (redirectServer) redirectServer.close();
   server.close(() => {
     process.exit(0);
   });
@@ -537,7 +511,6 @@ process.on('SIGINT', () => {
 process.on('SIGTERM', () => {
   discovery.stop();
   mdnsResponder.stop();
-  if (redirectServer) redirectServer.close();
   server.close(() => {
     process.exit(0);
   });
