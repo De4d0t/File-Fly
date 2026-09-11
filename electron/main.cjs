@@ -139,6 +139,8 @@ ipcMain.handle('shell:showInFolder', async (event, filePath) => {
   return false;
 });
 
+const os = require('os');
+
 // Native File Drag & Drop to Windows Desktop / Explorer
 ipcMain.on('ondragstart', (event, filePath) => {
   let targetPath = filePath;
@@ -148,10 +150,26 @@ ipcMain.on('ondragstart', (event, filePath) => {
     const base = path.basename(filePath || '');
     const inFolder = path.join(downloadsDir, 'FileFly', base);
     const inDownloads = path.join(downloadsDir, base);
+
+    let customDir = null;
+    try {
+      const cfgPath = path.join(os.homedir(), '.filefly', 'config.json');
+      if (fs.existsSync(cfgPath)) {
+        const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+        if (cfg.downloadsDir) customDir = cfg.downloadsDir;
+      }
+    } catch (_) {}
+
     if (fs.existsSync(inFolder)) {
       targetPath = inFolder;
     } else if (fs.existsSync(inDownloads)) {
       targetPath = inDownloads;
+    } else if (customDir && fs.existsSync(path.join(customDir, base))) {
+      targetPath = path.join(customDir, base);
+    } else if (customDir && fs.existsSync(path.join(customDir, 'FileFly', base))) {
+      targetPath = path.join(customDir, 'FileFly', base);
+    } else if (fs.existsSync(path.join(os.homedir(), 'Desktop', base))) {
+      targetPath = path.join(os.homedir(), 'Desktop', base);
     }
   }
 

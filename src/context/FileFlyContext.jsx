@@ -783,6 +783,7 @@ export function FileFlyProvider({ children }) {
         firstFileName: resolvedFirstFileName,
         filesCount: resolvedCount,
         totalBytes: transfer.totalBytes || 0,
+        savedPath: transfer.savedPath || transfer.historyItem?.savedPath || resolvedSavedPath || null,
         completedAt: Date.now(),
       };
       addHistoryRecord(clientHistoryItem);
@@ -1478,6 +1479,29 @@ export function FileFlyProvider({ children }) {
     }
   };
 
+  // Open / Reveal Received File in OS File Explorer (Windows Explorer, Mac Finder)
+  const openFolder = async (itemOrTransfer) => {
+    const transferId = itemOrTransfer?.id;
+    const fileName = itemOrTransfer?.firstFileName || itemOrTransfer?.name;
+    const savedPath = itemOrTransfer?.savedPath;
+
+    if (isHostMachine) {
+      if (typeof window !== 'undefined' && window.fileflyDesktop?.showInFolder && savedPath) {
+        window.fileflyDesktop.showInFolder(savedPath);
+        return;
+      }
+      try {
+        await apiFetch('/api/open-folder', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ transferId, fileName, filePath: savedPath }),
+        });
+      } catch (e) {
+        console.error('Failed to open folder:', e);
+      }
+    }
+  };
+
   return (
     <FileFlyContext.Provider
       value={{
@@ -1507,6 +1531,7 @@ export function FileFlyProvider({ children }) {
         updateDeviceName,
         refreshPeers,
         openFile,
+        openFolder,
         isHostMachine: Boolean(myDevice?.isHost || isHostMachine),
         respondToIncomingRequest,
         sendFilesToDevice,

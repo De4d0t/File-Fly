@@ -17,9 +17,11 @@ import {
   Smartphone,
   Laptop,
   Monitor,
-  ExternalLink
+  FolderOpen,
+  GripVertical
 } from 'lucide-react';
 import { useFileFly } from '../context/FileFlyContext.jsx';
+import { getServerBaseUrl } from '../services/serverDiscovery.js';
 import { formatBytes, formatHistoryDateTime } from '../utils/formatters.js';
 
 function getFileVisuals(filename = '') {
@@ -127,12 +129,47 @@ export default function HistoryModal() {
     history, 
     setHistory,
     isHostMachine, 
+    isMobileClient,
     clearHistory,
     deleteHistoryItem,
     openFile,
+    openFolder,
     myDevice,
     apiFetch
   } = useFileFly();
+
+  const [failedImages, setFailedImages] = useState(() => new Set());
+
+  const handleDragStart = (e, item) => {
+    if (isMobileClient) return;
+
+    const fileName = item.firstFileName || item.name || 'file';
+    const resolvedPath = item.savedPath || item.filePath || (item.files && item.files[0]?.savedPath) || fileName;
+
+    // 1. Electron Native Desktop Drag & Drop to Windows Desktop / Explorer
+    if (typeof window !== 'undefined' && window.fileflyDesktop?.startDrag) {
+      e.preventDefault();
+      window.fileflyDesktop.startDrag(resolvedPath);
+      return;
+    }
+
+    // 2. Web Browser (Chrome/Edge/Chromium) DownloadURL Drag & Drop to Windows Desktop / Explorer
+    try {
+      const baseUrl = getServerBaseUrl();
+      const fileIndex = 0;
+      const downloadUrl = `${baseUrl}/api/transfer/download/${encodeURIComponent(item.id || 'history')}/${fileIndex}?fileName=${encodeURIComponent(fileName)}&filePath=${encodeURIComponent(item.savedPath || '')}`;
+      const fullUrl = new URL(downloadUrl, window.location.origin).href;
+      const visual = getFileVisuals(fileName);
+      const mime = visual.category === 'Image' ? 'image/*' : 'application/octet-stream';
+
+      e.dataTransfer.setData('DownloadURL', `${mime}:${fileName}:${fullUrl}`);
+      e.dataTransfer.setData('text/uri-list', fullUrl);
+      e.dataTransfer.setData('text/plain', fullUrl);
+      e.dataTransfer.effectAllowed = 'copyMove';
+    } catch (err) {
+      console.warn('History card drag dataTransfer error:', err);
+    }
+  };
 
   useEffect(() => {
     if (isHistoryModalOpen) {
@@ -206,19 +243,21 @@ export default function HistoryModal() {
               </div>
             </div>
 
-            {/* Header Action: Close */}
-            <div className="flex items-center gap-2" dir="ltr">
+            {/* Header Close Action */}
+            <div className="flex items-center" dir="ltr">
+              {/* Close Button */}
               <button
                 onClick={() => setIsHistoryModalOpen(false)}
-                className="p-2 sm:p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white border border-slate-700/80 transition-all active:scale-95"
+                className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white border border-slate-700/80 transition-all active:scale-95 flex items-center justify-center shrink-0 shadow-sm"
                 title="إغلاق"
                 aria-label="إغلاق"
               >
-                <X className="w-4 h-4 sm:w-5 sm:h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
           </div>
         </div>
+
 
         {/* List of Items (English Cards with Two-Tier Layout) */}
         <div 
@@ -247,23 +286,73 @@ export default function HistoryModal() {
               const SenderIcon = getDeviceIcon(sender);
               const RecipientIcon = getDeviceIcon(recipient);
 
+              // Image thumbnail handling
+              const isImage = visual.category === 'Image';
+              const itemKey = item.id || `${item.firstFileName || 'file'}_${idx}`;
+              const hasFailed = failedImages.has(itemKey);
+
+              const baseUrl = getServerBaseUrl();
+              const queryParams = new URLSearchParams();
+              if (item.firstFileName) queryParams.set('fileName', item.firstFileName);
+              if (item.savedPath) queryParams.set('filePath', item.savedPath);
+              const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
+
+              const thumbnailUrl = isImage && !hasFailed
+                ? `${baseUrl}/api/transfer/view/${encodeURIComponent(item.id || 'current')}/0${queryString}`
+                : null;
+
               return (
                 <div
                   key={item.id || idx}
-                  className="relative overflow-hidden rounded-2xl bg-gradient-to-b from-slate-900/95 via-slate-900/80 to-slate-950/95 border border-slate-800/90 hover:border-slate-700/80 transition-all duration-200 group shadow-md hover:shadow-xl hover:-translate-y-0.5"
+                  draggable={!isMobileClient}
+                  onDragStart={(e) => handleDragStart(e, item)}
+                  className={`relative overflow-hidden rounded-2xl bg-gradient-to-b from-slate-900/95 via-slate-900/80 to-slate-950/95 border border-slate-800/90 hover:border-slate-700/80 transition-all duration-150 group shadow-md hover:shadow-xl select-none ${
+                    !isMobileClient ? 'cursor-grab active:cursor-grabbing hover:border-sky-500/40' : ''
+                  }`}
+                  title={!isMobileClient ? 'اسحب هذا الملف وأفلته في سطح المكتب مباشرة' : undefined}
                 >
                   {/* Top Tier: File Profile & Metrics */}
                   <div className="p-3 sm:p-3.5 flex items-center justify-between gap-3">
                     
-                    {/* Left side: Avatar + File Metadata */}
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                    {/* Left side: Grip + Avatar + File Metadata */}
+                    <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
                       
-                      {/* Avatar with Extension Micro-Tag */}
-                      <div className="relative shrink-0">
-                        <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-br ${visual.gradient} border ${visual.border} ring-1 ring-white/5 flex items-center justify-center transition-all duration-300 ${visual.glow}`}>
-                          <VisualIcon className={`w-5 h-5 sm:w-6 sm:h-6 ${visual.iconColor} drop-shadow-sm`} />
+                      {/* Grip handle indicator (Desktop only) */}
+                      {!isMobileClient && (
+                        <div 
+                          className="text-slate-600 group-hover:text-sky-400 group-hover:scale-110 transition-all shrink-0 cursor-grab active:cursor-grabbing"
+                          title="اسحب هذا الملف لسطح المكتب مباشرة"
+                        >
+                          <GripVertical className="w-4 h-4" />
                         </div>
-                        <span className={`absolute -bottom-1 -right-1 px-1.5 py-[0.5px] rounded-md text-[8.5px] font-black uppercase tracking-wider border shadow-sm ${visual.tagBg}`}>
+                      )}
+
+                      {/* Avatar with Extension Micro-Tag / Image Thumbnail */}
+                      <div 
+                        className={`relative shrink-0 ${openFile && (item.savedPath || isIncoming || isHostMachine) ? 'cursor-pointer' : ''}`}
+                        onClick={openFile && (item.savedPath || isIncoming || isHostMachine) ? (e) => { e.stopPropagation(); openFile(item); } : undefined}
+                        title={thumbnailUrl ? 'انقر لعرض الصورة' : (openFile && (item.savedPath || isIncoming || isHostMachine) ? 'انقر لفتح الملف مباشرة' : undefined)}
+                      >
+                        <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-br ${visual.gradient} border ${visual.border} ring-1 ring-white/5 flex items-center justify-center transition-all duration-200 ${visual.glow} overflow-hidden shadow-inner`}>
+                          {thumbnailUrl ? (
+                            <img
+                              src={thumbnailUrl}
+                              alt={item.firstFileName || 'Image'}
+                              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                              loading="lazy"
+                              onError={() => {
+                                setFailedImages((prev) => {
+                                  const next = new Set(prev);
+                                  next.add(itemKey);
+                                  return next;
+                                });
+                              }}
+                            />
+                          ) : (
+                            <VisualIcon className={`w-5 h-5 sm:w-6 sm:h-6 ${visual.iconColor} drop-shadow-sm`} />
+                          )}
+                        </div>
+                        <span className={`absolute -bottom-1 -right-1 px-1.5 py-0.5 rounded-md text-[8.5px] font-black uppercase tracking-wider border shadow-sm pointer-events-none select-none z-10 ${visual.tagBg}`}>
                           {visual.ext}
                         </span>
                       </div>
@@ -294,26 +383,37 @@ export default function HistoryModal() {
                     </div>
 
                     {/* Right side: Action Buttons */}
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div 
+                      className="flex items-center gap-1.5 sm:gap-2 shrink-0"
+                      onMouseDown={(e) => e.stopPropagation()}
+                    >
 
-                      {/* Open file action if available */}
-                      {openFile && (item.savedPath || isIncoming) && (
+                      {/* Open containing folder (Show in folder on PC) */}
+                      {isHostMachine && (
                         <button
-                          onClick={() => openFile(item)}
-                          className="w-8 h-8 rounded-xl bg-slate-800/40 hover:bg-sky-500/15 text-slate-400 hover:text-sky-300 border border-slate-700/40 hover:border-sky-500/30 transition-all duration-150 active:scale-90 flex items-center justify-center opacity-80 group-hover:opacity-100"
-                          title="Open or preview file"
-                          aria-label="Open file"
+                          draggable={false}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openFolder(item);
+                          }}
+                          className="w-8 h-8 rounded-xl bg-slate-800/60 hover:bg-slate-700 text-slate-400 hover:text-white border border-slate-700/60 hover:border-slate-600 transition-all duration-150 active:scale-90 flex items-center justify-center opacity-85 group-hover:opacity-100"
+                          title="فتح المجلد الموجود به الملف (عرض في المستكشف)"
+                          aria-label="فتح المجلد الموجود به الملف"
                         >
-                          <ExternalLink className="w-3.5 h-3.5" />
+                          <FolderOpen className="w-4 h-4" />
                         </button>
                       )}
 
                       {/* Delete item action */}
                       <button
-                        onClick={() => deleteHistoryItem(item.id)}
-                        className="w-8 h-8 rounded-xl bg-slate-800/40 hover:bg-rose-500/15 text-slate-400 hover:text-rose-400 border border-slate-700/40 hover:border-rose-500/30 transition-all duration-150 active:scale-90 flex items-center justify-center opacity-70 group-hover:opacity-100"
-                        title="Remove from history"
-                        aria-label="Remove from history"
+                        draggable={false}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteHistoryItem(item.id);
+                        }}
+                        className="w-8 h-8 rounded-xl bg-slate-800/60 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border border-slate-700/60 hover:border-rose-500/40 transition-all duration-150 active:scale-90 flex items-center justify-center opacity-75 group-hover:opacity-100"
+                        title="حذف من السجل"
+                        aria-label="حذف من السجل"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -328,7 +428,7 @@ export default function HistoryModal() {
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-slate-900/90 border border-slate-800/80 text-slate-300 shadow-xs">
                         <SenderIcon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                         <span className="truncate max-w-[85px] sm:max-w-[120px]" title={sender}>
-                          {sender} {isMeSender && <span className="text-[10px] text-sky-400 font-medium">(You)</span>}
+                          {sender} {isMeSender && <span className="text-[10px] text-slate-300 font-medium">(You)</span>}
                         </span>
                       </span>
 
@@ -338,7 +438,7 @@ export default function HistoryModal() {
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-slate-900/90 border border-slate-800/80 text-slate-300 shadow-xs">
                         <RecipientIcon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                         <span className="truncate max-w-[85px] sm:max-w-[120px]" title={recipient}>
-                          {recipient} {isMeRecipient && <span className="text-[10px] text-sky-400 font-medium">(You)</span>}
+                          {recipient} {isMeRecipient && <span className="text-[10px] text-slate-300 font-medium">(You)</span>}
                         </span>
                       </span>
                     </div>
@@ -368,20 +468,6 @@ export default function HistoryModal() {
               </p>
             </div>
           )}
-        </div>
-
-        {/* Modal Footer */}
-        <div className="p-3 sm:p-4 border-t border-slate-800/80 bg-slate-950/60 flex items-center justify-between text-xs text-slate-400 shrink-0" dir="rtl">
-          <div className="flex items-center gap-2 text-[11px]">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span>العمليات محلية 100% ومخزنة على جهازك فقط.</span>
-          </div>
-          <button
-            onClick={() => setIsHistoryModalOpen(false)}
-            className="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-semibold transition-all active:scale-95 text-xs shadow-sm border border-slate-700/80"
-          >
-            إغلاق
-          </button>
         </div>
 
       </div>

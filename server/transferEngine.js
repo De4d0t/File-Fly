@@ -19,6 +19,8 @@ export class TransferEngine {
     this.activeTransfers = new Map(); // transferId -> transferState
     this.history = this.loadHistory();
     this.saveHistory();
+    this.cleanTransitDirectoryOnStartup();
+    this.startPeriodicTransitSweeper();
   }
 
   loadHistory() {
@@ -108,6 +110,94 @@ export class TransferEngine {
     return Boolean(transfer?.isTransit);
   }
 
+  cleanTransitDirectoryOnStartup() {
+    try {
+      if (fs.existsSync(TRANSIT_BASE_DIR)) {
+        const entries = fs.readdirSync(TRANSIT_BASE_DIR);
+        for (const entry of entries) {
+          const fullPath = path.join(TRANSIT_BASE_DIR, entry);
+          try {
+            fs.rmSync(fullPath, { recursive: true, force: true });
+          } catch (_) {}
+        }
+        if (entries.length > 0) {
+          console.log(`[FileFly Transit] Cleaned up ${entries.length} stale transit folders on startup.`);
+        }
+      } else {
+        fs.mkdirSync(TRANSIT_BASE_DIR, { recursive: true });
+      }
+    } catch (err) {
+      console.warn('[FileFly Transit] Startup cleanup error:', err.message);
+    }
+  }
+
+  startPeriodicTransitSweeper() {
+    // Run sweeper every 10 minutes
+    this.sweeperInterval = setInterval(() => {
+      this.sweepStaleTransitFiles();
+    }, 10 * 60 * 1000);
+
+    // Register process exit cleanup
+    const cleanExit = () => {
+      try {
+        if (fs.existsSync(TRANSIT_BASE_DIR)) {
+          fs.rmSync(TRANSIT_BASE_DIR, { recursive: true, force: true });
+        }
+      } catch (_) {}
+    };
+    process.once('SIGINT', cleanExit);
+    process.once('SIGTERM', cleanExit);
+    process.once('exit', cleanExit);
+  }
+
+  sweepStaleTransitFiles() {
+    try {
+      if (!fs.existsSync(TRANSIT_BASE_DIR)) return;
+      const now = Date.now();
+      const entries = fs.readdirSync(TRANSIT_BASE_DIR);
+      for (const entry of entries) {
+        const activeTransfer = this.activeTransfers.get(entry);
+        if (activeTransfer && activeTransfer.status !== 'completed' && activeTransfer.status !== 'declined' && activeTransfer.status !== 'cancelled') {
+          continue;
+        }
+
+        const fullPath = path.join(TRANSIT_BASE_DIR, entry);
+        try {
+          const stats = fs.statSync(fullPath);
+          const ageMs = now - stats.mtimeMs;
+          if (ageMs > 10 * 60 * 1000 || (activeTransfer && ['completed', 'declined', 'cancelled'].includes(activeTransfer.status))) {
+            fs.rmSync(fullPath, { recursive: true, force: true });
+            console.log(`[FileFly Transit] Swept stale transit folder: ${entry}`);
+          }
+        } catch (_) {}
+      }
+    } catch (e) {
+      console.warn('[FileFly Transit] Sweeper error:', e.message);
+    }
+  }
+
+  markTransitFileDownloaded(transferId, fileIndex) {
+    const transfer = this.activeTransfers.get(transferId);
+    if (!transfer || !transfer.isTransit) return false;
+
+    if (!transfer.downloadedIndices) {
+      transfer.downloadedIndices = new Set();
+    }
+    transfer.downloadedIndices.add(Number(fileIndex));
+
+    const totalFiles = transfer.files?.length || 1;
+    const allDownloaded = transfer.downloadedIndices.size >= totalFiles;
+
+    if (allDownloaded) {
+      console.log(`[FileFly Transit] All ${totalFiles} files downloaded for ${transferId}. Scheduling cleanup in 5s.`);
+      setTimeout(() => {
+        this.cleanupTransitFiles(transferId);
+      }, 5000);
+      return true;
+    }
+    return false;
+  }
+
   cleanupTransitFiles(transferId) {
     try {
       const transitDir = path.join(TRANSIT_BASE_DIR, transferId);
@@ -142,6 +232,7 @@ export class TransferEngine {
       isHostRecipient: isTargetingHost,
       isTransit,
       transitDir,
+      downloadedIndices: new Set(),
       sender: {
         id: sender.id,
         name: sender.name,
@@ -308,6 +399,7 @@ export class TransferEngine {
       recipientName: transfer.recipient.name,
       filesCount: transfer.files.length,
       firstFileName: transfer.files[0]?.name || 'ملف',
+      savedPath: transfer.savedPath || transfer.files?.[0]?.savedPath || null,
       totalBytes: transfer.totalBytes,
       completedAt: Date.now(),
       durationSec: Math.max(1, Math.round((transfer.endTime - (transfer.startTime || transfer.createdAt)) / 1000)),

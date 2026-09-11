@@ -350,13 +350,56 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
     const transfer = transferEngine.getTransfer(transferId);
 
     let targetPath = transfer?.files?.[Number(fileIndex)]?.savedPath;
+    const historyItem = transferEngine.getHistory().find((h) => h.id === transferId);
     if (!targetPath) {
-      const historyItem = transferEngine.getHistory().find((h) => h.id === transferId);
       targetPath = historyItem?.savedPath;
+    }
+
+    // Fallback 1: check query parameter filePath directly
+    if ((!targetPath || !fs.existsSync(targetPath)) && req.query?.filePath) {
+      if (fs.existsSync(req.query.filePath)) {
+        targetPath = req.query.filePath;
+      }
+    }
+
+    // Fallback 2: check default downloads directory with candidate name
+    const defaultDir = config.downloadsDir || path.join(os.homedir(), 'Downloads');
+    if (!targetPath || !fs.existsSync(targetPath)) {
+      const candidateName = req.query?.fileName || historyItem?.firstFileName || transfer?.files?.[Number(fileIndex)]?.name;
+      if (candidateName) {
+        const candidate1 = path.join(defaultDir, candidateName);
+        const candidate2 = path.join(defaultDir, 'FileFly', candidateName);
+        if (fs.existsSync(candidate1)) {
+          targetPath = candidate1;
+        } else if (fs.existsSync(candidate2)) {
+          targetPath = candidate2;
+        }
+      }
+    }
+
+    // Fallback 3: check transit directory for this transfer
+    if (!targetPath || !fs.existsSync(targetPath)) {
+      try {
+        const transitDir = transferEngine.getTransferDir(transferId);
+        if (fs.existsSync(transitDir)) {
+          const transitFiles = fs.readdirSync(transitDir);
+          if (transitFiles.length > 0) {
+            const candidateName = req.query?.fileName || historyItem?.firstFileName;
+            const matched = candidateName ? transitFiles.find((f) => f === candidateName) : transitFiles[0];
+            if (matched) {
+              const fullTransitPath = path.join(transitDir, matched);
+              if (fs.existsSync(fullTransitPath)) {
+                targetPath = fullTransitPath;
+              }
+            }
+          }
+        }
+      } catch (_) {}
     }
 
     if (targetPath && fs.existsSync(targetPath)) {
       res.setHeader('Content-Disposition', 'inline');
+      res.setHeader('Cache-Control', 'public, max-age=86400');
       return res.sendFile(path.resolve(targetPath));
     }
 
@@ -370,23 +413,67 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
     const { transferId, fileIndex } = req.params;
     const transfer = transferEngine.getTransfer(transferId);
     
-    // Only allow download from active transfer sessions
     let targetFile = transfer?.files?.[Number(fileIndex)];
     let filePath = targetFile?.savedPath;
     let fileName = targetFile?.name;
 
+    const historyItem = transferEngine.getHistory().find((h) => h.id === transferId);
+    if (!filePath) {
+      filePath = historyItem?.savedPath;
+      fileName = historyItem?.firstFileName || fileName;
+    }
+
+    // Fallback 1: check query parameter filePath directly
+    if ((!filePath || !fs.existsSync(filePath)) && req.query?.filePath) {
+      if (fs.existsSync(req.query.filePath)) {
+        filePath = req.query.filePath;
+      }
+    }
+
+    // Fallback 2: check default downloads directory with candidate name
+    const defaultDir = config.downloadsDir || path.join(os.homedir(), 'Downloads');
+    if (!filePath || !fs.existsSync(filePath)) {
+      const candidateName = req.query?.fileName || fileName || historyItem?.firstFileName;
+      if (candidateName) {
+        const candidate1 = path.join(defaultDir, candidateName);
+        const candidate2 = path.join(defaultDir, 'FileFly', candidateName);
+        if (fs.existsSync(candidate1)) {
+          filePath = candidate1;
+        } else if (fs.existsSync(candidate2)) {
+          filePath = candidate2;
+        }
+      }
+    }
+
+    // Fallback 3: check transit directory for this transfer
+    if (!filePath || !fs.existsSync(filePath)) {
+      try {
+        const transitDir = transferEngine.getTransferDir(transferId);
+        if (fs.existsSync(transitDir)) {
+          const transitFiles = fs.readdirSync(transitDir);
+          if (transitFiles.length > 0) {
+            const candidateName = req.query?.fileName || fileName || historyItem?.firstFileName;
+            const matched = candidateName ? transitFiles.find((f) => f === candidateName) : transitFiles[0];
+            if (matched) {
+              const fullTransitPath = path.join(transitDir, matched);
+              if (fs.existsSync(fullTransitPath)) {
+                filePath = fullTransitPath;
+              }
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
     if (filePath && fs.existsSync(filePath)) {
-      const safeName = fileName || path.basename(filePath);
+      const safeName = fileName || req.query?.fileName || path.basename(filePath);
       const encodedName = encodeURIComponent(safeName);
       res.setHeader('Content-Disposition', `attachment; filename="${safeName}"; filename*=UTF-8''${encodedName}`);
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
 
       res.sendFile(path.resolve(filePath), (err) => {
         if (!err && transferEngine.isTransitTransfer(transferId)) {
-          // Temporary transit file: wipe from server immediately after recipient finishes download
-          setTimeout(() => {
-            transferEngine.cleanupTransitFiles(transferId);
-          }, 2000);
+          transferEngine.markTransitFileDownloaded(transferId, fileIndex);
         }
       });
       return;
@@ -557,6 +644,70 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
       res.json({ success: true, opened: targetPath });
     } catch (err) {
       console.error('[OpenFile Error]:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  /**
+   * Open the folder containing the file in OS File Explorer (Windows Explorer, Finder, etc.)
+   */
+  router.post('/open-folder', (req, res) => {
+    const { transferId, filePath, fileName } = req.body || {};
+    let targetPath = filePath;
+
+    if (transferId) {
+      const transfer = transferEngine.getTransfer(transferId);
+      if (transfer?.isTransit) {
+        return res.status(403).json({ error: 'Access denied: Private peer-to-peer transfer' });
+      }
+      targetPath = transfer?.files?.[0]?.savedPath;
+      if (!targetPath) {
+        const historyItem = transferEngine.getHistory().find((h) => h.id === transferId);
+        targetPath = historyItem?.savedPath;
+      }
+    }
+
+    const defaultDir = config.downloadsDir || path.join(os.homedir(), 'Downloads');
+
+    if (!targetPath && fileName) {
+      targetPath = path.join(defaultDir, fileName);
+    }
+
+    let folderPath = defaultDir;
+    let fileExists = false;
+
+    if (targetPath && fs.existsSync(targetPath)) {
+      fileExists = true;
+      folderPath = path.dirname(targetPath);
+    } else if (fileName && fs.existsSync(path.join(defaultDir, fileName))) {
+      targetPath = path.join(defaultDir, fileName);
+      fileExists = true;
+      folderPath = defaultDir;
+    }
+
+    try {
+      const osType = getDeviceOS();
+      if (osType === 'windows') {
+        if (fileExists && targetPath) {
+          const norm = path.normalize(targetPath);
+          exec(`explorer.exe /select,"${norm}"`);
+        } else {
+          const norm = path.normalize(folderPath);
+          exec(`explorer.exe "${norm}"`);
+        }
+      } else if (osType === 'mac') {
+        if (fileExists && targetPath) {
+          exec(`open -R "${targetPath}"`);
+        } else {
+          exec(`open "${folderPath}"`);
+        }
+      } else if (osType === 'linux') {
+        exec(`xdg-open "${folderPath}"`);
+      }
+
+      res.json({ success: true, folder: folderPath, selectedFile: fileExists ? targetPath : null });
+    } catch (err) {
+      console.error('[OpenFolder Error]:', err);
       res.status(500).json({ error: err.message });
     }
   });

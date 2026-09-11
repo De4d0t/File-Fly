@@ -77,6 +77,7 @@ export default function ActiveTransfers() {
   }, [transferId]);
 
   // Auto-trigger browser download ONLY on remote clients (phones, tablets, other PCs)
+  // Auto-trigger browser download ONLY on remote clients (phones, tablets, other PCs)
   // Server machine ALREADY has files written to disk by the backend; downloading again creates duplicates!
   useEffect(() => {
     if (isCompleted && isIncoming && !isServerHost && transferId && !autoDownloadedRef.current) {
@@ -84,15 +85,21 @@ export default function ActiveTransfers() {
       try {
         const files = activeTransfer?.files || [];
         if (files.length > 1) {
-          const link = document.createElement('a');
-          link.href = `/api/transfer/download-zip/${transferId}`;
-          link.setAttribute('download', `${firstFileName || 'files'}_all.zip`);
-          link.style.display = 'none';
-          document.body.appendChild(link);
-          link.click();
-          setTimeout(() => {
-            try { document.body.removeChild(link); } catch (_) {}
-          }, 1000);
+          // Download each file individually without ZIP compression so phones can open them directly!
+          files.forEach((file, index) => {
+            setTimeout(() => {
+              const targetFileName = file.name || `file_${index}`;
+              const link = document.createElement('a');
+              link.href = `/api/transfer/download/${transferId}/${index}`;
+              link.setAttribute('download', targetFileName);
+              link.style.display = 'none';
+              document.body.appendChild(link);
+              link.click();
+              setTimeout(() => {
+                try { document.body.removeChild(link); } catch (_) {}
+              }, 1000);
+            }, index * 700);
+          });
         } else {
           const targetFileName = files[0]?.name || firstFileName || 'file';
           const link = document.createElement('a');
@@ -111,15 +118,17 @@ export default function ActiveTransfers() {
     }
   }, [isCompleted, isIncoming, isServerHost, transferId, firstFileName, activeTransfer?.files]);
 
-  // On iOS: Dismiss completed incoming transfer locally after download has been initiated
+  // On iOS: Dismiss completed incoming transfer locally after all downloads have been initiated
   useEffect(() => {
     if (isCompleted && isIncoming && isIOS) {
+      const fileCount = activeTransfer?.files?.length || 1;
+      const delay = fileCount > 1 ? (fileCount * 700) + 1500 : 1500;
       const timer = setTimeout(() => {
         dismissActiveTransfer();
-      }, 1000);
+      }, delay);
       return () => clearTimeout(timer);
     }
-  }, [isCompleted, isIncoming, isIOS, dismissActiveTransfer]);
+  }, [isCompleted, isIncoming, isIOS, activeTransfer?.files?.length, dismissActiveTransfer]);
 
   if (!activeTransfer) return null;
 
@@ -274,6 +283,8 @@ export default function ActiveTransfers() {
                   <span>
                     {activeTransfer.batch
                       ? `تم استلام الملف (${activeTransfer.batch.current} من ${activeTransfer.batch.total}) بنجاح.`
+                      : filesList.length > 1
+                      ? `تم استلام وحفظ ${filesList.length} ملفات بشكل منفصل في تنزيلات هاتفك بنجاح.`
                       : 'تم استلام الملف وحفظه في تنزيلات هاتفك بنجاح.'}
                   </span>
                 </div>
@@ -338,7 +349,7 @@ export default function ActiveTransfers() {
                         </div>
                       </div>
 
-                      {/* On PC: Mouse Drag Handle | On Mobile: Saved Badge */}
+                      {/* On PC: Mouse Drag Handle | On Mobile: Saved Badge & Direct Download Link */}
                       {!isMobile ? (
                         <div 
                           className="w-8 h-8 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 flex items-center justify-center group-hover:bg-emerald-500/25 group-hover:border-emerald-400/60 group-hover:scale-105 transition-all shrink-0 cursor-grab active:cursor-grabbing shadow-sm"
@@ -347,10 +358,15 @@ export default function ActiveTransfers() {
                           <Move className="w-4 h-4 text-emerald-400 group-hover:text-emerald-300 transition-colors" />
                         </div>
                       ) : (
-                        <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[11px] font-semibold shrink-0">
+                        <a
+                          href={`/api/transfer/download/${activeTransfer.id}/${idx}`}
+                          download={file.name || `file_${idx}`}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-400 text-[11px] font-semibold shrink-0 transition-colors"
+                          title="انقر لتنزيل أو فتح هذا الملف"
+                        >
                           <Check className="w-3.5 h-3.5 stroke-[2.5]" />
                           <span>تم الحفظ</span>
-                        </div>
+                        </a>
                       )}
                     </div>
                   );

@@ -145,7 +145,7 @@ export default function Header() {
               className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/80 transition-all flex items-center justify-center hover:scale-105 active:scale-95 shadow-sm"
               title="سجل النقل والملفات"
             >
-              <History className="w-4 h-4 text-purple-400" />
+              <History className="w-4 h-4 text-sky-400" />
             </button>
           </div>
 
