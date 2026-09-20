@@ -489,8 +489,82 @@ export class TransferEngine {
     return this.activeTransfers.get(transferId);
   }
 
-  getHistory() {
-    return this.history;
+  checkFileExistsOnDisk(item) {
+    if (!item) return false;
+    const defaultDir = this.config?.downloadsDir || path.join(os.homedir(), 'Downloads');
+
+    // 1. Direct savedPath check
+    if (item.savedPath) {
+      try {
+        if (fs.existsSync(item.savedPath)) return true;
+        if (fs.existsSync(item.savedPath.normalize('NFC'))) return true;
+        if (fs.existsSync(item.savedPath.normalize('NFD'))) return true;
+      } catch (_) {}
+    }
+
+    // 2. Check files array if present
+    if (Array.isArray(item.files)) {
+      for (const f of item.files) {
+        if (f?.savedPath) {
+          try {
+            if (fs.existsSync(f.savedPath)) return true;
+            if (fs.existsSync(f.savedPath.normalize('NFC'))) return true;
+            if (fs.existsSync(f.savedPath.normalize('NFD'))) return true;
+          } catch (_) {}
+        }
+      }
+    }
+
+    // 3. Candidate names
+    const names = [];
+    if (item.firstFileName) {
+      names.push(item.firstFileName);
+      names.push(item.firstFileName.normalize('NFC'));
+      names.push(item.firstFileName.normalize('NFD'));
+      try {
+        const dec = Buffer.from(item.firstFileName, 'latin1').toString('utf8');
+        if (dec && dec !== item.firstFileName) {
+          names.push(dec, dec.normalize('NFC'), dec.normalize('NFD'));
+        }
+      } catch (_) {}
+    }
+
+    const cleanStr = (s) => (s || '').replace(/[\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, '').trim();
+
+    // Check candidate paths in Downloads and Downloads/FileFly
+    for (const n of names) {
+      if (!n) continue;
+      try {
+        if (fs.existsSync(path.join(defaultDir, n))) return true;
+        if (fs.existsSync(path.join(defaultDir, 'FileFly', n))) return true;
+      } catch (_) {}
+    }
+
+    // Scan defaultDir with Unicode bidirectional marks stripped and NFC normalized
+    try {
+      if (fs.existsSync(defaultDir)) {
+        const dirFiles = fs.readdirSync(defaultDir);
+        const targetCleanNames = names.map(cleanStr).filter(Boolean).map((n) => n.normalize('NFC').toLowerCase());
+        for (const df of dirFiles) {
+          const cleanDf = cleanStr(df).normalize('NFC').toLowerCase();
+          if (targetCleanNames.includes(cleanDf)) return true;
+        }
+      }
+    } catch (_) {}
+
+    return false;
+  }
+
+  getHistory(enriched = true) {
+    if (!enriched) return this.history || [];
+    return (this.history || []).map((item) => {
+      const exists = this.checkFileExistsOnDisk(item);
+      return {
+        ...item,
+        fileExists: exists,
+        isDeleted: !exists,
+      };
+    });
   }
 
   clearHistory() {

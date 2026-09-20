@@ -1,22 +1,18 @@
 import Navbar from '../components/Navbar';
 import Hero from '../components/Hero';
-import AppMockup from '../components/AppMockup';
-import Features from '../components/Features';
 import HowItWorks from '../components/HowItWorks';
-import DownloadSection from '../components/DownloadSection';
+import Features from '../components/Features';
 import FAQ from '../components/FAQ';
 import Footer from '../components/Footer';
 
 export default function Home() {
   return (
-    <div className="flex flex-col min-h-screen">
+    <div className="flex flex-col min-h-screen bg-slate-950 text-slate-100 selection:bg-sky-500 selection:text-white">
       <Navbar />
       <main className="flex-1">
         <Hero />
-        <AppMockup />
-        <Features />
         <HowItWorks />
-        <DownloadSection />
+        <Features />
         <FAQ />
       </main>
       <Footer />

@@ -437,12 +437,22 @@ export function FileFlyProvider({ children }) {
       if (isHost) {
         if (data.history && Array.isArray(data.history) && data.history.length > 0) {
           setHistory(data.history);
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem('filefly_client_history', JSON.stringify(data.history));
+            } catch (_) {}
+          }
         } else {
           apiFetch('/api/history')
             .then((r) => r.json())
             .then((d) => {
               if (d.history && Array.isArray(d.history) && d.history.length > 0) {
                 setHistory(d.history);
+                if (typeof window !== 'undefined') {
+                  try {
+                    localStorage.setItem('filefly_client_history', JSON.stringify(d.history));
+                  } catch (_) {}
+                }
               }
             })
             .catch(() => {});
@@ -496,8 +506,16 @@ export function FileFlyProvider({ children }) {
       if (Array.isArray(clientHistory) && clientHistory.length > 0) {
         setHistory((prev) => {
           const map = new Map();
-          [...(prev || []), ...clientHistory].forEach((item) => {
-            if (item?.id && !map.has(item.id)) map.set(item.id, item);
+          // Keep previous items
+          [...(prev || [])].forEach((item) => {
+            if (item?.id) map.set(item.id, item);
+          });
+          // Merge newly received clientHistory on top (with latest disk existence status)
+          clientHistory.forEach((item) => {
+            if (item?.id) {
+              const existing = map.get(item.id) || {};
+              map.set(item.id, { ...existing, ...item });
+            }
           });
           const merged = Array.from(map.values()).slice(0, 60);
           if (typeof window !== 'undefined') {

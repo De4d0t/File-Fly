@@ -141,10 +141,7 @@ export default function HistoryModal() {
   const [failedImages, setFailedImages] = useState(() => new Set());
 
   const handleDragStart = (e, item) => {
-    if (isMobileClient || item.isDeleted || item.fileExists === false) {
-      e.preventDefault();
-      return;
-    }
+    if (isMobileClient) return;
 
     const fileName = item.firstFileName || item.name || 'file';
     const resolvedPath = item.savedPath || item.filePath || (item.files && item.files[0]?.savedPath) || fileName;
@@ -174,54 +171,31 @@ export default function HistoryModal() {
     }
   };
 
-  const fetchHistory = React.useCallback(() => {
-    const endpoint = isHostMachine 
-      ? '/api/history' 
-      : `/api/history?clientId=${encodeURIComponent(myDevice?.id || '')}`;
-
-    apiFetch(endpoint)
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.history && Array.isArray(data.history)) {
-          const seen = new Set();
-          const unique = data.history.filter((item) => {
-            if (!item || !item.id || seen.has(item.id)) return false;
-            seen.add(item.id);
-            return true;
-          });
-          if (isHostMachine || unique.length > 0) {
-            setHistory(unique);
-            if (typeof window !== 'undefined') {
-              try {
-                localStorage.setItem('filefly_client_history', JSON.stringify(unique));
-              } catch (_) {}
-            }
-          }
-        }
-      })
-      .catch(() => {});
-  }, [apiFetch, isHostMachine, myDevice?.id, setHistory]);
-
   useEffect(() => {
     if (isHistoryModalOpen) {
-      fetchHistory();
+      
+      const endpoint = isHostMachine 
+        ? '/api/history' 
+        : `/api/history?clientId=${encodeURIComponent(myDevice?.id || '')}`;
 
-      // Continuous refresh every 2.5s while history modal is open so status never flickers or gets stale
-      const interval = setInterval(() => {
-        fetchHistory();
-      }, 2500);
-
-      // Auto-refresh when window regains focus (e.g. after user deletes/moves files in Explorer)
-      const handleFocus = () => {
-        fetchHistory();
-      };
-      window.addEventListener('focus', handleFocus);
-      return () => {
-        clearInterval(interval);
-        window.removeEventListener('focus', handleFocus);
-      };
+      apiFetch(endpoint)
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.history && Array.isArray(data.history)) {
+            const seen = new Set();
+            const unique = data.history.filter((item) => {
+              if (!item || !item.id || seen.has(item.id)) return false;
+              seen.add(item.id);
+              return true;
+            });
+            if (isHostMachine || unique.length > 0) {
+              setHistory(unique);
+            }
+          }
+        })
+        .catch(() => {});
     }
-  }, [isHistoryModalOpen, fetchHistory]);
+  }, [isHistoryModalOpen, isHostMachine, myDevice?.id]);
 
   // Close on ESC key
   useEffect(() => {
@@ -296,8 +270,6 @@ export default function HistoryModal() {
                 ? item.direction === 'incoming' 
                 : (item.recipientName === myDevice?.name || (item.senderName && item.senderName !== myDevice?.name));
               
-              const isDeleted = Boolean(item.isDeleted || item.fileExists === false);
-
               const myName = myDevice?.name || 'My Device';
               const sender = item.senderName || (isIncoming ? (item.partnerName || 'Peer') : myName);
               const recipient = item.recipientName || (isIncoming ? myName : (item.partnerName || 'Peer'));
@@ -325,27 +297,19 @@ export default function HistoryModal() {
               if (item.savedPath) queryParams.set('filePath', item.savedPath);
               const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
 
-              const thumbnailUrl = isImage && !hasFailed && !isDeleted
+              const thumbnailUrl = isImage && !hasFailed
                 ? `${baseUrl}/api/transfer/view/${encodeURIComponent(item.id || 'current')}/0${queryString}`
                 : null;
 
               return (
                 <div
                   key={item.id || idx}
-                  draggable={!isMobileClient && !isDeleted}
+                  draggable={!isMobileClient}
                   onDragStart={(e) => handleDragStart(e, item)}
-                  className={`relative overflow-hidden rounded-2xl bg-gradient-to-b from-slate-900/95 via-slate-900/80 to-slate-950/95 border transition-all duration-150 group shadow-md hover:shadow-xl select-none ${
-                    isDeleted
-                      ? 'border-slate-800/60 opacity-80 hover:opacity-100 hover:border-slate-700'
-                      : 'border-slate-800/90 hover:border-slate-700/80'
-                  } ${
-                    !isMobileClient && !isDeleted ? 'cursor-grab active:cursor-grabbing hover:border-sky-500/40' : ''
+                  className={`relative overflow-hidden rounded-2xl bg-gradient-to-b from-slate-900/95 via-slate-900/80 to-slate-950/95 border border-slate-800/90 hover:border-slate-700/80 transition-all duration-150 group shadow-md hover:shadow-xl select-none ${
+                    !isMobileClient ? 'cursor-grab active:cursor-grabbing hover:border-sky-500/40' : ''
                   }`}
-                  title={
-                    isDeleted
-                      ? 'هذا الملف محذوف وغير متوفر في مجلد التنزيلات'
-                      : (!isMobileClient ? 'اسحب هذا الملف وأفلته في سطح المكتب مباشرة' : undefined)
-                  }
+                  title={!isMobileClient ? 'اسحب هذا الملف وأفلته في سطح المكتب مباشرة' : undefined}
                 >
                   {/* Top Tier: File Profile & Metrics */}
                   <div className="p-3 sm:p-3.5 flex items-center justify-between gap-3">
@@ -353,8 +317,8 @@ export default function HistoryModal() {
                     {/* Left side: Grip + Avatar + File Metadata */}
                     <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
                       
-                      {/* Grip handle indicator (Desktop only - active when file exists) */}
-                      {!isMobileClient && !isDeleted && (
+                      {/* Grip handle indicator (Desktop only) */}
+                      {!isMobileClient && (
                         <div 
                           className="text-slate-600 group-hover:text-sky-400 group-hover:scale-110 transition-all shrink-0 cursor-grab active:cursor-grabbing"
                           title="اسحب هذا الملف لسطح المكتب مباشرة"
@@ -365,16 +329,12 @@ export default function HistoryModal() {
 
                       {/* Avatar with Extension Micro-Tag / Image Thumbnail */}
                       <div 
-                        className={`relative shrink-0 ${!isDeleted && openFile && (item.savedPath || isIncoming || isHostMachine) ? 'cursor-pointer' : 'cursor-default'}`}
-                        onClick={!isDeleted && openFile && (item.savedPath || isIncoming || isHostMachine) ? (e) => { e.stopPropagation(); openFile(item); } : undefined}
-                        title={!isDeleted && thumbnailUrl ? 'انقر لعرض الصورة' : (!isDeleted && openFile && (item.savedPath || isIncoming || isHostMachine) ? 'انقر لفتح الملف مباشرة' : undefined)}
+                        className={`relative shrink-0 ${openFile && (item.savedPath || isIncoming || isHostMachine) ? 'cursor-pointer' : ''}`}
+                        onClick={openFile && (item.savedPath || isIncoming || isHostMachine) ? (e) => { e.stopPropagation(); openFile(item); } : undefined}
+                        title={thumbnailUrl ? 'انقر لعرض الصورة' : (openFile && (item.savedPath || isIncoming || isHostMachine) ? 'انقر لفتح الملف مباشرة' : undefined)}
                       >
-                        <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-2xl ring-1 ring-white/5 flex items-center justify-center transition-all duration-200 overflow-hidden ${
-                          isDeleted 
-                            ? 'bg-slate-900/60 border border-slate-800/70' 
-                            : `bg-gradient-to-br ${visual.gradient} border ${visual.border} ${visual.glow} shadow-inner`
-                        }`}>
-                          {thumbnailUrl && !isDeleted ? (
+                        <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-br ${visual.gradient} border ${visual.border} ring-1 ring-white/5 flex items-center justify-center transition-all duration-200 ${visual.glow} overflow-hidden shadow-inner`}>
+                          {thumbnailUrl ? (
                             <img
                               src={thumbnailUrl}
                               alt={item.firstFileName || 'Image'}
@@ -389,14 +349,10 @@ export default function HistoryModal() {
                               }}
                             />
                           ) : (
-                            <VisualIcon className={`w-5 h-5 sm:w-6 sm:h-6 drop-shadow-sm ${isDeleted ? 'text-slate-500 opacity-60' : visual.iconColor}`} />
+                            <VisualIcon className={`w-5 h-5 sm:w-6 sm:h-6 ${visual.iconColor} drop-shadow-sm`} />
                           )}
                         </div>
-                        <span className={`absolute -bottom-1 -right-1 px-1.5 py-0.5 rounded-md text-[8.5px] font-black uppercase tracking-wider border shadow-sm pointer-events-none select-none z-10 ${
-                          isDeleted 
-                            ? 'bg-slate-950/90 text-slate-500 border-slate-800 opacity-60' 
-                            : visual.tagBg
-                        }`}>
+                        <span className={`absolute -bottom-1 -right-1 px-1.5 py-0.5 rounded-md text-[8.5px] font-black uppercase tracking-wider border shadow-sm pointer-events-none select-none z-10 ${visual.tagBg}`}>
                           {visual.ext}
                         </span>
                       </div>
@@ -405,16 +361,11 @@ export default function HistoryModal() {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">
                           <span 
-                            className={`font-bold text-sm sm:text-[15px] truncate transition-all ${
-                              isDeleted
-                                ? 'line-through text-slate-400 decoration-slate-400/80 decoration-[1.5px] select-text'
-                                : 'text-white group-hover:text-sky-300'
-                            }`}
+                            className="font-bold text-sm sm:text-[15px] text-white truncate group-hover:text-sky-300 transition-colors"
                             title={item.firstFileName || 'File'}
                           >
                             {item.firstFileName || 'File'}
                           </span>
-
                           {item.filesCount > 1 && (
                             <span className="px-1.5 py-0.5 rounded-md bg-violet-500/15 text-violet-300 border border-violet-500/25 text-[10px] font-semibold shrink-0">
                               +{item.filesCount - 1} files
@@ -422,23 +373,23 @@ export default function HistoryModal() {
                           )}
                         </div>
 
-                        {/* Subtitle row: File Size only (no strikethrough on size) */}
+                        {/* Subtitle row: File Size */}
                         <div className="mt-1">
-                          <span className={`font-mono text-xs font-semibold ${isDeleted ? 'text-slate-500' : 'text-slate-400'}`}>
+                          <span className="font-mono text-xs font-semibold text-slate-400">
                             {formatBytes(item.totalBytes)}
                           </span>
                         </div>
                       </div>
                     </div>
 
-                    {/* Right side: Action Buttons (Display/Open actions hidden when deleted) */}
+                    {/* Right side: Action Buttons */}
                     <div 
                       className="flex items-center gap-1.5 sm:gap-2 shrink-0"
                       onMouseDown={(e) => e.stopPropagation()}
                     >
 
-                      {/* Open containing folder (Show in folder on PC) - Only visible when file is NOT deleted */}
-                      {!isDeleted && isHostMachine && (
+                      {/* Open containing folder (Show in folder on PC) */}
+                      {isHostMachine && (
                         <button
                           draggable={false}
                           onClick={(e) => {

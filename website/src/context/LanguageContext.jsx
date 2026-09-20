@@ -1,36 +1,27 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useEffect } from 'react';
 import { translations } from '../locales/translations';
 
 const LanguageContext = createContext();
 
 export function LanguageProvider({ children }) {
-  const [lang, setLang] = useState('ar');
-
   useEffect(() => {
-    const saved = localStorage.getItem('filefly_lang');
-    if (saved === 'ar' || saved === 'en') {
-      setLang(saved);
+    document.documentElement.dir = 'ltr';
+    document.documentElement.lang = 'en';
+    try {
+      localStorage.removeItem('filefly_lang');
+    } catch (e) {
+      // ignore storage errors
     }
   }, []);
 
-  useEffect(() => {
-    const dir = translations[lang]?.dir || 'rtl';
-    document.documentElement.dir = dir;
-    document.documentElement.lang = lang;
-    localStorage.setItem('filefly_lang', lang);
-  }, [lang]);
-
-  const toggleLang = () => {
-    setLang((prev) => (prev === 'ar' ? 'en' : 'ar'));
-  };
-
-  const t = translations[lang] || translations.ar;
-  const dir = t.dir;
+  const lang = 'en';
+  const dir = 'ltr';
+  const t = translations.en;
 
   return (
-    <LanguageContext.Provider value={{ lang, setLang, toggleLang, t, dir }}>
+    <LanguageContext.Provider value={{ lang, t, dir }}>
       {children}
     </LanguageContext.Provider>
   );

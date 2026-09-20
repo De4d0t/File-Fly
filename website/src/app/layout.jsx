@@ -20,7 +20,7 @@ export const viewport = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="ar" dir="rtl" className="dark scroll-smooth">
+    <html lang="en" dir="ltr" className="dark scroll-smooth">
       <body className="bg-slate-950 text-slate-100 antialiased selection:bg-brand-500 selection:text-white min-h-screen flex flex-col">
         <LanguageProvider>
           {children}

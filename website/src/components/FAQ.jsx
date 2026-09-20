@@ -1,60 +1,128 @@
 'use client';
 
 import { useState } from 'react';
-import { ChevronDown, HelpCircle } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 
 export default function FAQ() {
-  const [openIndex, setOpenIndex] = useState(0);
-  const { t, dir } = useLanguage();
+  const [openIndices, setOpenIndices] = useState([]);
+  const { t } = useLanguage();
+
+  const toggleFAQ = (idx) => {
+    setOpenIndices((prev) =>
+      prev.includes(idx) ? prev.filter((i) => i !== idx) : [...prev, idx]
+    );
+  };
+
+  const mid = Math.ceil(t.faq.items.length / 2);
+  const col1 = t.faq.items.slice(0, mid);
+  const col2 = t.faq.items.slice(mid);
 
   return (
-    <section id="faq" className="py-20 relative bg-slate-900/20">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+    <section id="faq" className="py-14 sm:py-20 relative">
+      <div className="max-w-4xl lg:max-w-5xl mx-auto px-4 sm:px-6">
         
-        {/* Header */}
-        <div className="text-center mb-16">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800/80 border border-slate-700 text-slate-300 text-xs font-bold mb-4">
-            <HelpCircle className="w-3.5 h-3.5 text-sky-400" />
-            {t.faq.badge}
-          </div>
-          <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight mb-4">
-            {t.faq.title} <span className="text-gradient-cyan">FileFly</span>
+        {/* Section Header */}
+        <div className="text-center max-w-2xl mx-auto mb-10 sm:mb-12">
+          <h2 className="text-2xl sm:text-4xl font-black text-white tracking-tight mb-3">
+            {t.faq.title}
           </h2>
-          <p className="text-sm sm:text-base text-slate-400">
-            {t.faq.subtitle}
-          </p>
+          {t.faq.subtitle && (
+            <p className="text-sm sm:text-base text-slate-400 font-normal">
+              {t.faq.subtitle}
+            </p>
+          )}
         </div>
 
-        {/* Accordion */}
-        <div className="space-y-4">
-          {t.faq.items.map((faq, idx) => {
-            const isOpen = openIndex === idx;
-            return (
-              <div
-                key={idx}
-                className={`glass-card rounded-2xl border transition-all duration-200 overflow-hidden ${
-                  isOpen ? 'border-sky-500/30 bg-slate-900/70' : 'hover:border-slate-700'
-                }`}
-              >
-                <button
-                  onClick={() => setOpenIndex(isOpen ? -1 : idx)}
-                  className={`w-full p-5 ${dir === 'rtl' ? 'text-right' : 'text-left'} flex items-center justify-between gap-4 font-bold text-base sm:text-lg text-white`}
+        {/* 2-Column FAQ Layout */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5 items-start">
+          
+          {/* Column 1 */}
+          <div className="space-y-4 sm:space-y-5">
+            {col1.map((faq, index) => {
+              const idx = index;
+              const isOpen = openIndices.includes(idx);
+              return (
+                <div
+                  key={idx}
+                  className={`rounded-2xl border transition-all duration-300 backdrop-blur-sm overflow-hidden ${
+                    isOpen
+                      ? 'border-slate-700/90 bg-slate-900/70 shadow-lg shadow-black/30'
+                      : 'border-slate-800/80 bg-slate-900/30 hover:border-slate-700/80 hover:bg-slate-900/50'
+                  }`}
                 >
-                  <span>{faq.q}</span>
-                  <div className={`w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center shrink-0 transition-transform duration-300 ${isOpen ? 'rotate-180 text-sky-400 bg-sky-500/10' : 'text-slate-400'}`}>
-                    <ChevronDown className="w-4 h-4" />
-                  </div>
-                </button>
+                  <button
+                    onClick={() => toggleFAQ(idx)}
+                    className="w-full p-5 sm:p-6 text-left flex items-start justify-between gap-3.5 group cursor-pointer"
+                  >
+                    <div className="flex items-start gap-3">
+                      <span className="text-[11px] font-mono font-bold text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded border border-sky-500/20 shrink-0 mt-0.5">
+                        0{idx + 1}
+                      </span>
+                      <span className="text-sm sm:text-base font-bold text-white group-hover:text-sky-300 transition-colors leading-snug">
+                        {faq.q}
+                      </span>
+                    </div>
+                    <div className={`w-7 h-7 rounded-full border border-slate-800 bg-slate-950 flex items-center justify-center shrink-0 transition-all duration-300 mt-0.5 ${
+                      isOpen ? 'rotate-45 text-sky-400 border-sky-500/30 bg-sky-500/10' : 'text-slate-400 group-hover:text-white group-hover:border-slate-700'
+                    }`}>
+                      <Plus className="w-3.5 h-3.5" />
+                    </div>
+                  </button>
 
-                {isOpen && (
-                  <div className="px-5 pb-5 text-sm sm:text-base text-slate-300 leading-relaxed border-t border-slate-800/80 pt-4">
-                    {faq.a}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                  {isOpen && (
+                    <div className="px-5 pb-5 sm:px-6 sm:pb-6 text-xs sm:text-sm text-slate-300/90 leading-relaxed pt-0 pl-11 sm:pl-12">
+                      {faq.a}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Column 2 */}
+          <div className="space-y-4 sm:space-y-5">
+            {col2.map((faq, index) => {
+              const idx = mid + index;
+              const isOpen = openIndices.includes(idx);
+              return (
+                <div
+                  key={idx}
+                  className={`rounded-2xl border transition-all duration-300 backdrop-blur-sm overflow-hidden ${
+                    isOpen
+                      ? 'border-slate-700/90 bg-slate-900/70 shadow-lg shadow-black/30'
+                      : 'border-slate-800/80 bg-slate-900/30 hover:border-slate-700/80 hover:bg-slate-900/50'
+                  }`}
+                >
+                  <button
+                    onClick={() => toggleFAQ(idx)}
+                    className="w-full p-5 sm:p-6 text-left flex items-start justify-between gap-3.5 group cursor-pointer"
+                  >
+                    <div className="flex items-start gap-3">
+                      <span className="text-[11px] font-mono font-bold text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded border border-sky-500/20 shrink-0 mt-0.5">
+                        0{idx + 1}
+                      </span>
+                      <span className="text-sm sm:text-base font-bold text-white group-hover:text-sky-300 transition-colors leading-snug">
+                        {faq.q}
+                      </span>
+                    </div>
+                    <div className={`w-7 h-7 rounded-full border border-slate-800 bg-slate-950 flex items-center justify-center shrink-0 transition-all duration-300 mt-0.5 ${
+                      isOpen ? 'rotate-45 text-sky-400 border-sky-500/30 bg-sky-500/10' : 'text-slate-400 group-hover:text-white group-hover:border-slate-700'
+                    }`}>
+                      <Plus className="w-3.5 h-3.5" />
+                    </div>
+                  </button>
+
+                  {isOpen && (
+                    <div className="px-5 pb-5 sm:px-6 sm:pb-6 text-xs sm:text-sm text-slate-300/90 leading-relaxed pt-0 pl-11 sm:pl-12">
+                      {faq.a}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
         </div>
 
       </div>

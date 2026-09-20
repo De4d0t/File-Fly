@@ -525,71 +525,6 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
   /**
    * Transfer History
    */
-  const checkHistoryFileExists = (item) => {
-    const defaultDir = config.downloadsDir || path.join(os.homedir(), 'Downloads');
-
-    // 1. Direct savedPath check
-    if (item.savedPath) {
-      try {
-        if (fs.existsSync(item.savedPath)) return true;
-        if (fs.existsSync(item.savedPath.normalize('NFC'))) return true;
-        if (fs.existsSync(item.savedPath.normalize('NFD'))) return true;
-      } catch (_) {}
-    }
-
-    // 2. Check files array if present
-    if (Array.isArray(item.files)) {
-      for (const f of item.files) {
-        if (f.savedPath) {
-          try {
-            if (fs.existsSync(f.savedPath)) return true;
-            if (fs.existsSync(f.savedPath.normalize('NFC'))) return true;
-            if (fs.existsSync(f.savedPath.normalize('NFD'))) return true;
-          } catch (_) {}
-        }
-      }
-    }
-
-    // 3. Candidate names
-    const names = [];
-    if (item.firstFileName) {
-      names.push(item.firstFileName);
-      names.push(item.firstFileName.normalize('NFC'));
-      names.push(item.firstFileName.normalize('NFD'));
-      try {
-        const dec = Buffer.from(item.firstFileName, 'latin1').toString('utf8');
-        if (dec && dec !== item.firstFileName) {
-          names.push(dec, dec.normalize('NFC'), dec.normalize('NFD'));
-        }
-      } catch (_) {}
-    }
-
-    const cleanStr = (s) => (s || '').replace(/[\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, '').trim();
-
-    // Check candidate paths in Downloads and Downloads/FileFly
-    for (const n of names) {
-      if (!n) continue;
-      try {
-        if (fs.existsSync(path.join(defaultDir, n))) return true;
-        if (fs.existsSync(path.join(defaultDir, 'FileFly', n))) return true;
-      } catch (_) {}
-    }
-
-    // Scan defaultDir with Unicode bidirectional marks stripped and NFC normalized
-    try {
-      if (fs.existsSync(defaultDir)) {
-        const dirFiles = fs.readdirSync(defaultDir);
-        const targetCleanNames = names.map(cleanStr).filter(Boolean).map((n) => n.normalize('NFC').toLowerCase());
-        for (const df of dirFiles) {
-          const cleanDf = cleanStr(df).normalize('NFC').toLowerCase();
-          if (targetCleanNames.includes(cleanDf)) return true;
-        }
-      }
-    } catch (_) {}
-
-    return false;
-  };
-
   router.get('/history', (req, res) => {
     const clientId = req.query?.clientId;
     const clientIp = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').replace(/^.*:/, '');
@@ -607,18 +542,8 @@ export function createRouter(config, discovery, transferEngine, serverPort) {
       historyList = [];
     }
 
-    // Enrich history items with live disk existence status (fileExists / isDeleted)
-    const enrichedHistory = historyList.map((item) => {
-      const exists = checkHistoryFileExists(item);
-      return {
-        ...item,
-        fileExists: exists,
-        isDeleted: !exists,
-      };
-    });
-
     res.json({
-      history: enrichedHistory,
+      history: historyList,
       downloadsDir: isHost ? config.downloadsDir : null,
     });
   });
