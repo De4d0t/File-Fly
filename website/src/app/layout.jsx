@@ -2,7 +2,7 @@ import { LanguageProvider } from '../context/LanguageContext';
 import './globals.css';
 
 export const metadata = {
-  title: 'FileFly — Fast Local File Transfer Without Internet',
+  title: 'FILE FLY — Fast Local File Transfer Without Internet',
   description: 'Transfer large files, folders, and text directly over local Wi-Fi between PC, Android, iPhone, and Mac without internet at maximum speed.',
   icons: {
     icon: '/icon.svg',

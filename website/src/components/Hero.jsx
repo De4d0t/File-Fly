@@ -29,17 +29,20 @@ export default function Hero() {
         </p>
 
         {/* Main Action Block */}
-        <div className="flex flex-col items-center justify-center gap-3.5 mb-2">
+        <div className="flex flex-col items-center justify-center gap-3 mb-2">
           <a
             href="/api/download"
             download
-            className="inline-flex items-center gap-2.5 px-8 py-4 rounded-2xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-base shadow-xl shadow-sky-500/25 hover:shadow-sky-500/40 hover:scale-[1.02] active:scale-[0.98] transition-all"
+            className="inline-flex items-center gap-3 px-8 py-4 rounded-2xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-base shadow-xl shadow-sky-500/25 hover:shadow-sky-500/40 hover:scale-[1.02] active:scale-[0.98] transition-all group"
           >
             <svg className="w-5 h-5 fill-current shrink-0" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M0 0h11.2v11.2H0zm12.8 0H24v11.2H12.8zM0 12.8h11.2V24H0zm12.8 0H24V24H12.8z" />
             </svg>
             <span>{t.hero.downloadWindows}</span>
           </a>
+          <span className="text-xs text-slate-400 font-medium">
+            {t.hero.version}
+          </span>
         </div>
 
       </div>

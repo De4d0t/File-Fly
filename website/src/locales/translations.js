@@ -15,7 +15,7 @@ export const translations = {
       titleHighlight: 'Between PC & Phone',
       description: 'Transfer photos, 4K videos, and large folders directly over your local Wi-Fi at maximum router speed — zero internet, zero cloud, and no app installation required on your phone.',
       downloadWindows: 'Download for Windows',
-      downloadMeta: 'Portable (.exe) • 100% Free • No Installation Required',
+      version: 'Version 1.0.0',
       mobileNotice: '📱 Phones (iPhone & Android): Zero apps required — simply scan the QR code with your camera',
     },
     preview: {
@@ -38,7 +38,7 @@ export const translations = {
         {
           num: '1',
           title: 'Open on Your PC',
-          description: 'Launch FileFly directly on Windows. It is a lightweight portable app requiring zero setup or installation.',
+          description: 'Launch FILE FLY directly on Windows. It is a lightweight portable app requiring zero setup or installation.',
         },
         {
           num: '2',
@@ -53,7 +53,7 @@ export const translations = {
       ],
     },
     features: {
-      title: 'Why FileFly?',
+      title: 'Why FILE FLY?',
       titleHighlight: 'Engineered for Speed & Complete Privacy',
       subtitle: 'A true cross-platform AirDrop alternative connecting Windows PCs with all mobile devices seamlessly.',
       items: [
@@ -80,12 +80,16 @@ export const translations = {
           a: 'Not at all! Transfers happen 100% locally across your Wi-Fi network (LAN). Zero bytes of your internet data allowance are touched.',
         },
         {
+          q: 'Can I transfer files outside of my local network?',
+          a: 'No, all devices must be connected to the exact same Wi-Fi router or local network (LAN). This direct local connection is what enables maximum transfer speed and complete privacy without internet. You can also connect via a phone mobile hotspot completely offline without consuming cellular data!',
+        },
+        {
           q: 'Do I need to install an app on my iPhone or Android?',
-          a: 'No, that is the beauty of FileFly. You simply open your phone camera and scan the QR code displayed on your PC screen, opening the web transfer interface instantly.',
+          a: 'No, that is the beauty of FILE FLY. You simply open your phone camera and scan the QR code displayed on your PC screen, opening the web transfer interface instantly.',
         },
         {
           q: 'Is there any file size limit?',
-          a: 'There are no limits. You can send large 4K movies, entire multi-gigabyte folders, or hundreds of photos in one batch; FileFly automatically handles folders by compressing them as ZIP.',
+          a: 'There are no limits. You can send large 4K movies, entire multi-gigabyte folders, or hundreds of photos in one batch; FILE FLY automatically handles folders by compressing them as ZIP.',
         },
         {
           q: 'What operating systems are supported?',
