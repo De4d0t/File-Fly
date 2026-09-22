@@ -11,6 +11,7 @@
 
 <p align="center">
   <a href="https://github.com/De4d0t/File-Fly/releases/latest"><img src="https://img.shields.io/badge/Release-v1.0.0-0284c7?style=for-the-badge&logo=github" alt="Release"></a>
+  <a href="https://filefly9.vercel.app/"><img src="https://img.shields.io/badge/Website-filefly9.vercel.app-6366f1?style=for-the-badge&logo=vercel" alt="Website"></a>
   <a href="https://github.com/De4d0t/File-Fly/blob/master/LICENSE"><img src="https://img.shields.io/badge/License-MIT-38bdf8?style=for-the-badge" alt="License"></a>
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20iOS%20%7C%20Android-0f172a?style=for-the-badge&logo=windows" alt="Platform">
   <img src="https://img.shields.io/badge/Network-100%25%20Offline%20LAN-10b981?style=for-the-badge" alt="Offline">
@@ -40,7 +41,7 @@ No internet connection, no Bluetooth pairing headaches, no cloud accounts, and *
 
 ## 🚀 Quick Start (For Users)
 
-1. Download the latest portable executable from [**GitHub Releases**](https://github.com/De4d0t/File-Fly/releases/latest/download/FileFly.exe).
+1. Download the latest portable executable from [**GitHub Releases**](https://github.com/De4d0t/File-Fly/releases/latest/download/FileFly.exe) or visit our [**Official Website**](https://filefly9.vercel.app/).
 2. Launch `FileFly.exe` on Windows (requires no installation).
 3. Connect your phone to the same Wi-Fi network.
 4. Scan the on-screen QR code with your phone camera.
@@ -58,7 +59,7 @@ No internet connection, no Bluetooth pairing headaches, no cloud accounts, and *
 | **Realtime Sync** | **WebSockets (`ws`)** | Instant bidirectional peer presence, transfer approvals, and progress |
 | **Peer Discovery** | **UDP Broadcast (`53317`)** | Automatic local network device discovery |
 | **Network Engine** | **Dynamic IP + mDNS (`fly.local`)** | Automatic router IP detection and zero-config local hostname |
-| **Landing Website** | **Next.js 14 + Tailwind CSS** | Official marketing landing page and release portal |
+| **Landing Website** | **Next.js 14 + Tailwind CSS** | [filefly9.vercel.app](https://filefly9.vercel.app/) — Official live landing page & web portal |
 
 ---
 
@@ -96,14 +97,16 @@ The compiled, portable `.exe` will be ready inside the `dist-app/` directory!
 
 ## 🌐 Official Website (Landing Page)
 
-The landing website is housed in the `website/` directory. To run it locally:
+Visit the live official website:  
+👉 **[https://filefly9.vercel.app/](https://filefly9.vercel.app/)**
+
+The landing website source code is located in the `website/` directory. To run it locally:
 
 ```bash
 cd website
 npm install
 npm run dev
 ```
-Open [http://localhost:3000](http://localhost:3000) to view the landing page.
 
 ---
 

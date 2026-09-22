@@ -13,8 +13,7 @@
     "electron:dev": "concurrently -k \"npm run dev:server\" \"vite\" \"wait-on tcp:5173 && electron .\"",
     "start": "node server/index.js",
     "version:set": "node scripts/sync-version.js",
-    "version:sync": "node scripts/sync-version.js",
-    "version": "node scripts/sync-version.js && git add website/package.json"
+    "version": "node scripts/sync-version.js"
   },
   "build": {
     "appId": "com.filefly.app",
