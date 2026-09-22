@@ -1,3 +1,5 @@
+import { APP_VERSION } from '../config/version';
+
 export const translations = {
   en: {
     dir: 'ltr',
@@ -10,12 +12,12 @@ export const translations = {
       downloadBtn: 'Download for Windows',
     },
     hero: {
-      badge: 'Free & Open Source • Version 1.0',
+      badge: `Free & Open Source • Version ${APP_VERSION}`,
       title: 'The Fastest, Easiest Way to Transfer Files',
       titleHighlight: 'Between PC & Phone',
       description: 'Transfer photos, 4K videos, and large folders directly over your local Wi-Fi at maximum router speed — zero internet, zero cloud, and no app installation required on your phone.',
       downloadWindows: 'Download for Windows',
-      version: 'Version 1.0.0',
+      version: `Version ${APP_VERSION}`,
       mobileNotice: '📱 Phones (iPhone & Android): Zero apps required — simply scan the QR code with your camera',
     },
     preview: {

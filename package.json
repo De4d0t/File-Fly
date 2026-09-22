@@ -11,7 +11,10 @@
     "build": "vite build",
     "build:exe": "vite build && electron-builder --win",
     "electron:dev": "concurrently -k \"npm run dev:server\" \"vite\" \"wait-on tcp:5173 && electron .\"",
-    "start": "node server/index.js"
+    "start": "node server/index.js",
+    "version:set": "node scripts/sync-version.js",
+    "version:sync": "node scripts/sync-version.js",
+    "version": "node scripts/sync-version.js && git add website/package.json"
   },
   "build": {
     "appId": "com.filefly.app",

@@ -69,13 +69,13 @@
 1. **طريقة تشغيل المشروع في التطوير:**
    - السيرفر يشغّل بالاختصار: `npm run dev` (يطلق concurrently كلاً من `npm run dev:server` و `npm run dev:vite`).
 2. **ملفات الواجهة والإنتاج (`dist`):**
-   - سيرفر الباك إند [server/index.js](file:///c:/Users/eahhd/OneDrive/Desktop/File-Fly/server/index.js) مهيأ لخدمة `dist/index.html` في الإنتاج، والتحويل التلقائي إلى منفذ `5173` في التطوير إذا لم يكن مجلد `dist` موجوداً. لا تعطل هذا السلوك.
+   - سيرفر الباك إند `server/index.js` مهيأ لخدمة `dist/index.html` في الإنتاج، والتحويل التلقائي إلى منفذ `5173` في التطوير إذا لم يكن مجلد `dist` موجوداً. لا تعطل هذا السلوك.
 3. **التجاوب مع الهواتف (Responsive UI):**
    - أي تعديل في التصميم يجب أن يراعي شاشات الهواتف المحمولة عمودياً وشاشات الحواسيب أفقياً بشكل ممتاز، مع مراعاة وضع الـ PWA.
 4. **جدار الحماية والشبكة:**
    - عند تشغيل التطبيق على أي جهاز جديد، يجب تفعيل السماح في جدار حماية ويندوز (Windows Firewall) للشبكات الخاصة (Private Networks) لتتمكن الهواتف من الاتصال.
 5. **سلامة بروتوكول النقل (File Transfer Protocol):**
-   - لا تغير هيكل رسائل الـ WebSocket (`INIT_STATE`, `PEERS_UPDATE`, `TRANSFER_REQUEST`, `TRANSFER_ACCEPT`, `TRANSFER_PROGRESS`, `TRANSFER_COMPLETE`, `CLIPBOARD_SHARE`) بدون مزامنة التغيير بين [server/index.js](file:///c:/Users/eahhd/OneDrive/Desktop/File-Fly/server/index.js) و [src/context/FileFlyContext.jsx](file:///c:/Users/eahhd/OneDrive/Desktop/File-Fly/src/context/FileFlyContext.jsx).
+   - لا تغير هيكل رسائل الـ WebSocket (`INIT_STATE`, `PEERS_UPDATE`, `TRANSFER_REQUEST`, `TRANSFER_ACCEPT`, `TRANSFER_PROGRESS`, `TRANSFER_COMPLETE`, `CLIPBOARD_SHARE`) بدون مزامنة التغيير بين `server/index.js` و `src/context/FileFlyContext.jsx`.
 6. **تنسيق التاريخ في سجل النقل (History Format):**
    - يُعرض التاريخ والوقت كاملاً بصيغة: `YYYY-M-D | 12:14 am` (مثل `2026-5-2 | 12:14 am`) مع تثبيت `dir="ltr"` لمنع تداخل الأرقام مع الواجهة العربية.
 7. **خصوصية سجل النقل بين الأجهزة (Transfer History Privacy):**

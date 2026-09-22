@@ -1,10 +1,19 @@
 import fs from 'fs';
 import path from 'path';
+import { APP_VERSION } from '../../../config/version';
 
 export async function GET() {
-  const localExePath = path.resolve(process.cwd(), '../dist-app/FileFly 1.0.0.exe');
+  const version = APP_VERSION;
+  
+  const possiblePaths = [
+    path.resolve(process.cwd(), `../dist-app/FileFly ${version}.exe`),
+    path.resolve(process.cwd(), `../dist-app/FileFly-${version}.exe`),
+    path.resolve(process.cwd(), '../dist-app/FileFly.exe'),
+  ];
 
-  if (fs.existsSync(localExePath)) {
+  const localExePath = possiblePaths.find(p => fs.existsSync(p));
+
+  if (localExePath) {
     const stats = fs.statSync(localExePath);
     const nodeStream = fs.createReadStream(localExePath);
 
@@ -18,7 +27,7 @@ export async function GET() {
 
     return new Response(webStream, {
       headers: {
-        'Content-Disposition': 'attachment; filename="FileFly-1.0.0.exe"',
+        'Content-Disposition': `attachment; filename="FileFly-${version}.exe"`,
         'Content-Type': 'application/vnd.microsoft.portable-executable',
         'Content-Length': stats.size.toString(),
       },

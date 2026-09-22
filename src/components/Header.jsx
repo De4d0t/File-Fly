@@ -7,6 +7,7 @@ import {
   History
 } from 'lucide-react';
 import { useFileFly } from '../context/FileFlyContext.jsx';
+import packageJson from '../../package.json';
 
 export default function Header() {
   const { 
@@ -57,7 +58,7 @@ export default function Header() {
           <div className="flex items-center gap-2 app-no-drag">
             <Zap className="w-3.5 h-3.5 text-sky-400 fill-sky-400" />
             <span className="font-semibold text-slate-200">FileFly Server</span>
-            <span className="text-[10px] text-slate-500 font-mono">v1.0</span>
+            <span className="text-[10px] text-slate-500 font-mono">v{packageJson.version}</span>
           </div>
 
           <div className="flex items-center gap-1 app-no-drag">
