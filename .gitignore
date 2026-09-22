@@ -21,6 +21,7 @@ build/
 out/
 release/
 scratch/
+website/
 
 # Executables & Windows Artifacts
 *.exe
