@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="public/icon-192.png" alt="FileFly Logo" width="110" height="110" style="border-radius: 24px;">
+  <img src="public/icon-192.png" alt="FileFly Logo" width="100" height="100" style="border-radius: 22px;">
 </p>
 
 <h1 align="center">FileFly</h1>
@@ -19,37 +19,43 @@
 
 ---
 
-## ⚡ What is FileFly?
-
-**FileFly** is a modern, ultra-fast, and secure file sharing application designed to bridge the gap between **Windows PCs and mobile phones (iPhone & Android)** over your local Wi-Fi network. 
-
-No internet connection, no Bluetooth pairing headaches, no cloud accounts, and **zero app installation required on mobile devices** — simply scan a QR code with your camera and start transferring at full router speed!
+<p align="center">
+  <img src="assets/filefly-preview.png" alt="FileFly Server Desktop Interface" width="600" style="max-width: 100%;">
+</p>
 
 ---
 
-## ✨ Key Features
+## What is FileFly?
 
-- 🚀 **Full Wi-Fi Speeds (Up to 100MB/s):** Transfers gigabytes of 4K videos, photos, and zip files in seconds, orders of magnitude faster than Bluetooth or slow cloud uploads.
-- 🔒 **100% Offline & Private:** Zero internet data touched. Your files never leave your local Wi-Fi router. Works seamlessly even during internet outages or over a phone mobile hotspot.
-- 📱 **Zero-Install Mobile Web Client:** Phone users don't need to install anything from the App Store or Google Play. Just scan the desktop QR code to open the responsive Web Client.
-- 📁 **Full Folder Transfer & Auto-ZIP:** Drag and drop entire multi-gigabyte folder structures; FileFly packages and extracts them on the fly.
-- 📋 **Instant Clipboard & Text Sharing:** Send links, notes, and text snippets between your phone and computer in real-time.
-- 🖥️ **Sleek Desktop Experience:** Frameless, modern dark glassmorphic UI built with Electron, featuring system tray controls, taskbar integration, and native drag-and-drop.
-- 📜 **Private Transfer History:** Beautiful two-tier history log kept 100% private to each individual device.
+**FileFly** is a modern, ultra-fast, and secure file sharing application designed to bridge the gap between **Windows PCs and mobile phones (iPhone & Android)** over your local Wi-Fi network.
+
+No internet connection, no Bluetooth pairing headaches, no cloud accounts, and **zero app installation required on mobile devices** — simply scan a QR code with your phone camera and start transferring files at full router speed.
 
 ---
 
-## 🚀 Quick Start (For Users)
+## Key Features
+
+- **Live Radar Discovery:** Real-time visual radar scans and displays active devices connected to the same local Wi-Fi network.
+- **Full Wi-Fi Speeds:** Transfers photos, videos, and large files in seconds at maximum local router bandwidth.
+- **100% Offline & Private:** Operates entirely over the local network without touching external servers or consuming internet quota.
+- **Zero-Install Mobile Web Client:** Mobile users connect directly through their browser via QR code scan without installing any third-party app.
+- **Instant Clipboard & Text Sharing:** Share links, text snippets, and notes seamlessly between PC and mobile devices.
+- **Sleek Desktop Experience:** Frameless dark glassmorphic interface built with Electron, featuring system tray controls and drag-and-drop file sharing.
+- **Private Transfer History:** Transfer logs remain completely isolated and stored locally per device.
+
+---
+
+## Quick Start (For Users)
 
 1. Download the latest portable executable from [**GitHub Releases**](https://github.com/De4d0t/File-Fly/releases/latest/download/FileFly.exe) or visit our [**Official Website**](https://filefly9.vercel.app/).
 2. Launch `FileFly.exe` on Windows (requires no installation).
 3. Connect your phone to the same Wi-Fi network.
 4. Scan the on-screen QR code with your phone camera.
-5. Drag and drop any files or folders to send them instantly!
+5. Drag and drop any files or select them to send immediately.
 
 ---
 
-## 🛠️ Tech Stack & Architecture
+## Tech Stack & Architecture
 
 | Layer | Technology | Purpose |
 | :--- | :--- | :--- |
@@ -59,11 +65,10 @@ No internet connection, no Bluetooth pairing headaches, no cloud accounts, and *
 | **Realtime Sync** | **WebSockets (`ws`)** | Instant bidirectional peer presence, transfer approvals, and progress |
 | **Peer Discovery** | **UDP Broadcast (`53317`)** | Automatic local network device discovery |
 | **Network Engine** | **Dynamic IP + mDNS (`fly.local`)** | Automatic router IP detection and zero-config local hostname |
-| **Landing Website** | **Next.js 14 + Tailwind CSS** | [filefly9.vercel.app](https://filefly9.vercel.app/) — Official live landing page & web portal |
 
 ---
 
-## 💻 Developer Guide (Running from Source)
+## Developer Guide (Running from Source)
 
 ### Prerequisites
 - [Node.js](https://nodejs.org/) (version 18 or higher)
@@ -91,31 +96,23 @@ npm run dev
 ```bash
 npm run build:exe
 ```
-The compiled, portable `.exe` will be ready inside the `dist-app/` directory!
+The compiled, portable `.exe` will be ready inside the `dist-app/` directory.
 
 ---
 
-## 🌐 Official Website (Landing Page)
+## Official Website
 
-Visit the live official website:  
+Visit our official website for downloads, features overview, and release notes:  
 👉 **[https://filefly9.vercel.app/](https://filefly9.vercel.app/)**
 
-The landing website source code is located in the `website/` directory. To run it locally:
-
-```bash
-cd website
-npm install
-npm run dev
-```
-
 ---
 
-## 📄 License
+## License
 
-Distributed under the **MIT License**. See `LICENSE` for more information.
+Distributed under the **MIT License**. See [LICENSE](LICENSE) for more information.
 
 ---
 
 <p align="center">
-  Made with ❤️ by <strong>FileFly Team</strong> • Built for speed, privacy, and simplicity.
+  Developed by <strong>Ahmed Al-Jaberi</strong> (<a href="https://github.com/De4d0t">@De4d0t</a>)
 </p>
